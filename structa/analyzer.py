@@ -82,6 +82,7 @@ class Analyzer:
 
         stats = Stats(len(value) for value in cohort)
         if stats.min == stats.max:
+            # We're dealing with (mostly) fixed length strings
             for pattern in DATETIME_FORMATS:
                 if all(is_datetime(value, pattern) for value in cohort):
                     return DateTime(cohort, pattern)
@@ -132,7 +133,7 @@ class Analyzer:
                     parent_card = 0
             if len(card) < self.choice_threshold:
                 return Choices(
-                    Choice(key, count < parent_card)
+                    Choice(key, optional=count < parent_card)
                     for key, count in card.items()
                 )
             elif all(isinstance(value, int) for value in card):
