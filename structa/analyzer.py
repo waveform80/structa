@@ -59,9 +59,11 @@ class ValidationWarning(Warning):
 
 
 class Analyzer:
-    def __init__(self, *, min_coverage=95, choice_threshold=20):
+    def __init__(self, *, min_coverage=95, choice_threshold=20,
+                 key_threshold=20):
         self.min_coverage = min_coverage
         self.choice_threshold = choice_threshold
+        self.key_threshold = key_threshold
 
     def _match_str(self, items):
         """
@@ -112,11 +114,13 @@ class Analyzer:
         else:
             return Str(cohort)
 
-    def _match(self, items, parent_card=None):
+    def _match(self, items, *, threshold=None, parent_card=None):
         """
         Find a pattern which matches all (or most) of *items*, an iterable of
         objects found at a particular layer of the hierarchy.
         """
+        if threshold is None:
+            threshold = self.choice_threshold
         items = list(items)
         if not items:
             return Empty()
@@ -125,30 +129,34 @@ class Analyzer:
         elif all(isinstance(item, dict) for item in items):
             return Dict(len(item) for item in items)
         else:
-            card = Counter(items)
-            if parent_card is None:
-                try:
-                    parent_card = max(card.values())
-                except ValueError:
-                    parent_card = 0
-            if len(card) < self.choice_threshold:
-                return Choices(
-                    Choice(key, optional=count < parent_card)
-                    for key, count in card.items()
-                )
-            elif all(isinstance(value, int) for value in card):
-                return Int(card)
-            elif all(isinstance(value, float) for value in card):
-                if all(likely_datetime(value) for value in card):
-                    return DateTime(card, float)
-                else:
-                    return Float(card)
-            elif all(isinstance(value, datetime) for value in card):
-                return DateTime(card)
-            elif all(isinstance(value, str) for value in card):
-                return self._match_str(card)
-            else:
+            try:
+                card = Counter(items)
+            except TypeError:
                 return Value()
+            else:
+                if parent_card is None:
+                    try:
+                        parent_card = max(card.values())
+                    except ValueError:
+                        parent_card = 0
+                if len(card) < threshold:
+                    return Choices(
+                        Choice(key, optional=count < parent_card)
+                        for key, count in card.items()
+                    )
+                elif all(isinstance(value, int) for value in card):
+                    return Int(card)
+                elif all(isinstance(value, float) for value in card):
+                    if all(likely_datetime(value) for value in card):
+                        return DateTime(card, float)
+                    else:
+                        return Float(card)
+                elif all(isinstance(value, datetime) for value in card):
+                    return DateTime(card)
+                elif all(isinstance(value, str) for value in card):
+                    return self._match_str(card)
+                else:
+                    return Value()
 
     def _extract(self, it, path):
         """
@@ -192,32 +200,35 @@ class Analyzer:
                 assert head.validate(it)
                 yield it
 
-    def _analyze(self, it, path=None, card=1):
+    def _analyze(self, it, path, *, threshold=None, card=1):
         """
         Recursively analyze the structure of *it* at the nodes described by
         *path*. The parent cardinality is tracked in *card* (for the purposes
         of determining optional choices).
         """
-        if path is None:
-            path = []
-        pattern = self._match(self._extract(it, path), card)
+        pattern = self._match(self._extract(it, path),
+                              threshold=threshold, parent_card=card)
         if isinstance(pattern, Dict):
             key_pattern = self._analyze(
-                it, path + [pattern], pattern.stats.card)
+                it, path + [pattern],
+                threshold=self.key_threshold,
+                card=pattern.stats.card)
             if isinstance(key_pattern, Choices):
                 return pattern._replace(pattern={
                     choice: self._analyze(
-                        it, path + [pattern, choice], pattern.stats.card)
+                        it, path + [pattern, choice],
+                        card=pattern.stats.card)
                     for choice in key_pattern
                 })
             else:
                 return pattern._replace(pattern={
                     key_pattern: self._analyze(
-                        it, path + [pattern, key_pattern], pattern.stats.card)
+                        it, path + [pattern, key_pattern],
+                        card=pattern.stats.card)
                 })
         elif isinstance(pattern, List):
             item_pattern = self._analyze(
-                it, path + [pattern], pattern.stats.card)
+                it, path + [pattern], card=pattern.stats.card)
             return pattern._replace(pattern=[item_pattern])
         else:
             return pattern
@@ -227,4 +238,4 @@ class Analyzer:
         Given some value *it* (typically an iterable or mapping), return a
         description of its structure.
         """
-        return self._analyze(it)
+        return self._analyze(it, [])

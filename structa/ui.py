@@ -15,9 +15,15 @@ def main(args=None):
         "stdin will be read for the data")
     parser.add_argument(
         '-C', '--choice-threshold', type=int, metavar='NUM', default=20,
-        help="If the number of distinct keys in a map is less than this "
+        help="If the number of distinct values in a field is less than this "
         "then they will be considered distinct choices instead of being "
         "lumped under a generic type like <str> (default: %(default)s)")
+    parser.add_argument(
+        '-K', '--key-threshold', type=int, metavar='NUM', default=None,
+        help="If the number of distinct keys in a map is less than this "
+        "then they will be considered distinct choices instead of being "
+        "lumped under a generic type like <str> (defaults to the value of "
+        "--choice-threshold)")
     parser.add_argument(
         '-M', '--min-coverage', type=int, metavar='NUM', default=95,
         help="The percentage of string values which must match the guessed "
@@ -25,10 +31,16 @@ def main(args=None):
         "date-times from preventing the entry as being date-times (default: "
         "%(default)s)")
     config = parser.parse_args(args)
+    config.key_threshold = (
+        config.choice_threshold
+        if config.key_threshold is None else
+        config.key_threshold)
+
     warnings.simplefilter('ignore', category=ValidationWarning)
 
     analyzer = Analyzer(
         choice_threshold=config.choice_threshold,
+        key_threshold=config.key_threshold,
         min_coverage=config.min_coverage)
     data = json.load(config.file)
     print(analyzer.analyze(data))

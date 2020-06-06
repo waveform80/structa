@@ -17,7 +17,9 @@ def format_int(i):
     if not index:
         return str(i)
     else:
-        return '%.1f%s' % ((i / 2 ** (index * 10)), suffixes[index])
+        return '{value:.1f}{suffix}'.format(
+            value=(i / 2 ** (index * 10)),
+            suffix=suffixes[index])
 
 
 class Stats(namedtuple('Stats', ('card', 'min', 'max', 'median'))):
@@ -42,18 +44,17 @@ class Dict(namedtuple('Dict', ('stats', 'pattern'))):
             return '{}'
         else:
             return '\n'.join(
-                '%s %s:%s%s' % (
-                    '├─' if index < len(self.pattern) else '└─',
-                    key,
-                    '\n' if isinstance(value, Dict) else ' ',
-                    indent(
-                        str(value),
-                        '│  ' if index < len(self.pattern) else '   ')
-                    if isinstance(value, Dict) else
-                    value
-                )
+                '{tree} {key}:{sep}{value}'.format(
+                    tree='├─' if index < len(self.pattern) else '└─',
+                    key=key,
+                    sep='\n' if isinstance(value, Dict) else ' ',
+                    value=indent(
+                            str(value),
+                            '│  ' if index < len(self.pattern) else '   ')
+                        if isinstance(value, Dict) else
+                        value)
                 for index, (key, value) in enumerate(
-                        self.pattern.items(), start=1)
+                    self.pattern.items(), start=1)
             )
 
     def validate(self, value):
@@ -70,7 +71,12 @@ class List(namedtuple('List', ('stats', 'pattern'))):
         if self.pattern is None:
             return '[]'
         else:
-            return '[%s]' % ', '.join(str(item) for item in self.pattern)
+            elems = ', '.join(str(item) for item in self.pattern)
+            if '\n' in elems or len(elems) > 60:
+                elems = ',\n'.join(str(item) for item in self.pattern)
+                return '[\n{elems}\n]'.format(elems=indent(elems, '   '))
+            else:
+                return '[{elems}]'.format(elems=elems)
 
     def validate(self, value):
         return isinstance(value, list)
@@ -93,9 +99,10 @@ class DateTime(namedtuple('DateTime', ('stats', 'pattern'))):
             None: '',
             float: '%f ',
         }.get(self.pattern, repr(self.pattern) + ' ')
-        return '<datetime %s%s..%s>' % (pattern,
-                                        self.stats.min.replace(microsecond=0),
-                                        self.stats.max.replace(microsecond=0))
+        return '<datetime {pattern}{min}..{max}>'.format(
+            pattern=pattern,
+            min=self.stats.min.replace(microsecond=0),
+            max=self.stats.max.replace(microsecond=0))
 
     def validate(self, value):
         if self.pattern is None:
@@ -119,8 +126,9 @@ class Str(namedtuple('Str', ('stats', 'pattern'))):
         if self.pattern is None:
             return '<str>'
         else:
-            return '<str %s>' % shorten(repr(self.pattern), width=60,
-                                        placeholder='...')
+            return '<str {pattern}>'.format(
+                pattern=shorten(repr(self.pattern), width=60,
+                                placeholder='...'))
 
     def validate(self, value):
         return (
@@ -143,9 +151,10 @@ class Int(namedtuple('Int', ('stats', 'pattern'))):
             10: '"dec" ',
             16: '"hex" ',
         }.get(self.pattern, '"???" ')
-        return '<int %s%s..%s>' % (pattern,
-                                   format_int(self.stats.min),
-                                   format_int(self.stats.max))
+        return '<int {pattern}{min}..{max}>'.format(
+            pattern=pattern,
+            min=format_int(self.stats.min),
+            max=format_int(self.stats.max))
 
     def validate(self, value):
         return (
@@ -163,7 +172,8 @@ class Float(namedtuple('Float', ('stats', 'pattern'))):
         return super().__new__(cls, Stats(sample), pattern)
 
     def __str__(self):
-        return '<float %.1f..%.1f>' % (self.stats.min, self.stats.max)
+        return '<float {min:.1f}..{max:.1f}>'.format(
+            min=self.stats.min, max=self.stats.max)
 
 
 class Bool(namedtuple('Bool', ('card',))):
@@ -194,10 +204,14 @@ class URL:
 
 class Choices(set):
     def __str__(self):
-        choices = shorten(
-            '|'.join(str(choice.value) for choice in self),
-            width=60, placeholder='...')
-        return '{%s}' % choices
+        if len(self) == 1:
+            for choice in self:
+                return str(choice.value)
+        else:
+            choices = shorten(
+                '|'.join(str(choice.value) for choice in self),
+                width=60, placeholder='...')
+            return '{{{choices}}}'.format(choices=choices)
 
     def validate(self, value):
         return any(choice.validate(value) for choice in self)
@@ -207,7 +221,7 @@ class Choice(namedtuple('Choice', ('value', 'optional'))):
     __slots__ = ()
 
     def __str__(self):
-        return ('%r*' % (self.value,)) if self.optional else repr(self.value)
+        return repr(self.value) + ('*' if self.optional else '')
 
     def validate(self, value):
         return value == self.value
