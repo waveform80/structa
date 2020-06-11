@@ -1,9 +1,9 @@
 __project__      = 'structa'
 __version__      = '0.1'
-__keywords__     = ['structure', 'analysis']
+__keywords__     = ['structure', 'analysis', 'json']
 __author__       = 'Dave Jones'
 __author_email__ = 'dave@waveform.org.uk'
-__url__          = 'https://github.com/waveform80/structure'
+__url__          = 'https://github.com/waveform80/structa'
 __platforms__    = 'ALL'
 
 __requires__ = []
