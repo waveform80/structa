@@ -3,6 +3,9 @@ from datetime import datetime, timedelta
 from functools import partial
 from collections import Counter
 
+from dateutil.relativedelta import relativedelta
+
+from .chars import AnyChar, Digit, OctDigit, DecDigit, HexDigit
 from .patterns import (
     Bool,
     Choice,
@@ -20,8 +23,6 @@ from .patterns import (
 )
 
 
-DEC_DIGITS = set('0123456789')
-HEX_DIGITS = set('0123456789abcdefABCDEF')
 DATETIME_FORMATS = {
     '%Y-%m-%dT%H:%M:%S.%f',
     '%Y-%m-%dT%H:%M:%S',
@@ -31,8 +32,6 @@ DATETIME_FORMATS = {
     '%Y-%m-%d %H:%M',
     '%Y-%m-%d',
 }
-MIN_TIMESTAMP = (datetime.now() - timedelta(days=20 * 365.25)).timestamp()
-MAX_TIMESTAMP = (datetime.now() + timedelta(days=10 * 365.25)).timestamp()
 
 def try_conv(conv, value):
     try:
@@ -42,13 +41,12 @@ def try_conv(conv, value):
     else:
         return True
 
+is_oct = partial(try_conv, partial(int, base=8))
 is_dec = partial(try_conv, partial(int, base=10))
 is_hex = partial(try_conv, partial(int, base=16))
 is_float = partial(try_conv, float)
 def is_datetime(value, fmt):
     return try_conv(lambda v: datetime.strptime(v, fmt), value)
-def likely_datetime(value):
-    return is_float(value) and MIN_TIMESTAMP <= float(value) <= MAX_TIMESTAMP
 
 
 class ValidationWarning(Warning):
@@ -59,11 +57,36 @@ class ValidationWarning(Warning):
 
 
 class Analyzer:
-    def __init__(self, *, min_coverage=95, choice_threshold=20,
-                 key_threshold=20):
-        self.min_coverage = min_coverage
+    def __init__(self, *, bad_threshold=2, empty_threshold=98,
+                 choice_threshold=20, key_threshold=20, max_numeric_len=50,
+                 strip_whitespace=False, min_timestamp=None, max_timestamp=None):
+        self.bad_threshold = bad_threshold / 100
+        self.empty_threshold = empty_threshold / 100
         self.choice_threshold = choice_threshold
         self.key_threshold = key_threshold
+        self.max_numeric_len = max_numeric_len
+        self.strip_whitespace = strip_whitespace
+        now = datetime.now()
+        if min_timestamp is None:
+            min_timestamp = now - relativedelta(years=20)
+        if max_timestamp is None:
+            max_timestamp = now + relativedelta(years=10)
+        self.min_timestamp = min_timestamp.timestamp()
+        self.max_timestamp = max_timestamp.timestamp()
+
+    def _likely_datetime(self, value):
+        """
+        Given a :class:`str` *value*, returns :data:`True` if it represents a
+        floating point value that, if treated as a UNIX timestamp (a seconds
+        offset from midnight, 1st January 1970), would fall between
+        :attr:`min_timestamp` and :attr:`max_timestamp`.
+        """
+        try:
+            value = float(value)
+        except ValueError:
+            return False
+        else:
+            return self.min_timestamp <= value <= self.max_timestamp
 
     def _match_str(self, items):
         """
@@ -72,15 +95,22 @@ class Analyzer:
         variety of date-time formats in a majority of the entries (covering
         greater than *min_coverage* percent of them).
         """
-        min_coverage = self.min_coverage / 100
         total = sum(items.values())
-        coverage = 0
-        cohort = set()
-        for value, count in items.most_common():
-            cohort.add(value)
-            coverage += count
-            if coverage / total >= min_coverage:
-                break
+        if '' in items:
+            if items[''] / total > self.empty_threshold:
+                return Str(items.keys())
+            del items['']
+        if self.bad_threshold == 0:
+            cohort = items.keys()
+        else:
+            min_coverage = total - int(total * self.bad_threshold)
+            coverage = 0
+            cohort = set()
+            for item, count in items.most_common():
+                cohort.add(item)
+                coverage += count
+                if coverage >= min_coverage:
+                    break
 
         stats = Stats(len(value) for value in cohort)
         if stats.min == stats.max:
@@ -88,28 +118,44 @@ class Analyzer:
             for pattern in DATETIME_FORMATS:
                 if all(is_datetime(value, pattern) for value in cohort):
                     return DateTime(cohort, pattern)
-            pattern = ''
+            pattern = []
+            base = 0
             for chars in zip(*cohort): # transpose
                 chars = set(chars)
                 if len(chars) == 1:
-                    pattern += chars.pop()
-                elif chars <= DEC_DIGITS:
-                    pattern += 'd'
-                elif chars <= HEX_DIGITS:
-                    pattern += 'h'
+                    pattern.append(chars.pop())
+                elif chars <= HexDigit.chars:
+                    pattern.append(Digit)
+                    if chars <= OctDigit.chars:
+                        base = max(base, 8)
+                    elif chars <= DecDigit.chars:
+                        base = max(base, 10)
+                    else:
+                        base = max(base, 16)
                 else:
-                    pattern += 'c'
+                    pattern.append(AnyChar)
+            pattern = tuple(
+                (
+                    HexDigit if base == 16 else
+                    DecDigit if base == 10 else
+                    OctDigit
+                ) if char == Digit else char
+                for char in pattern
+            )
             return Str(cohort, pattern)
-        elif all(len(value) < 50 and is_dec(value) for value in cohort):
-            return Int(cohort, 10)
-        elif all(len(value) < 50 and is_hex(value) for value in cohort):
-            return Int(cohort, 16)
-        elif all(len(value) < 50 and is_float(value) for value in cohort):
-            if all(likely_datetime(float(value)) for value in cohort):
-                return DateTime(cohort, float)
-            else:
-                return Float(cohort, float)
-        elif all(value.startswith(('http://', 'https://')) for value in cohort):
+        elif stats.max < self.max_numeric_len:
+            if all(is_dec(value) for value in cohort):
+                return Int(cohort, 10)
+            elif all(is_hex(value) for value in cohort):
+                return Int(cohort, 16)
+            elif all(is_oct(value) for value in cohort):
+                return Int(cohort, 8)
+            elif all(is_float(value) for value in cohort):
+                if all(self._likely_datetime(float(value)) for value in cohort):
+                    return DateTime(cohort, float)
+                else:
+                    return Float(cohort, float)
+        if all(value.startswith(('http://', 'https://')) for value in cohort):
             return URL()
         else:
             return Str(cohort)
@@ -147,13 +193,18 @@ class Analyzer:
                 elif all(isinstance(value, int) for value in card):
                     return Int(card)
                 elif all(isinstance(value, float) for value in card):
-                    if all(likely_datetime(value) for value in card):
+                    if all(self._likely_datetime(value) for value in card):
                         return DateTime(card, float)
                     else:
                         return Float(card)
                 elif all(isinstance(value, datetime) for value in card):
                     return DateTime(card)
                 elif all(isinstance(value, str) for value in card):
+                    if self.strip_whitespace:
+                        card = Counter({
+                            s.strip(): count
+                            for s, count in card.items()
+                        })
                     return self._match_str(card)
                 else:
                     return Value()
@@ -180,16 +231,17 @@ class Analyzer:
                                 it[key_pattern.value], tail)
                         elif not key_pattern.optional:
                             warnings.warn(ValidationWarning(
-                                "mandatory key %s missing" %
-                                key_pattern.value))
+                                "mandatory key {key_pattern.value} "
+                                "missing".format(key_pattern=key_pattern)))
                     else:
                         for key, value in it.items():
                             if key_pattern.validate(key):
                                 yield from self._extract(value, tail)
                             else:
                                 warnings.warn(ValidationWarning(
-                                    "failed to validate %s against %r" %
-                                    (key, key_pattern)))
+                                    "failed to validate {key} against "
+                                    "{key_pattern!r}".format(
+                                        key=key, key_pattern=key_pattern)))
                 else:
                     # keys
                     yield from it
@@ -210,25 +262,25 @@ class Analyzer:
                               threshold=threshold, parent_card=card)
         if isinstance(pattern, Dict):
             key_pattern = self._analyze(
-                it, path + [pattern],
+                it, path + (pattern,),
                 threshold=self.key_threshold,
                 card=pattern.stats.card)
             if isinstance(key_pattern, Choices):
                 return pattern._replace(pattern={
                     choice: self._analyze(
-                        it, path + [pattern, choice],
+                        it, path + (pattern, choice),
                         card=pattern.stats.card)
                     for choice in key_pattern
                 })
             else:
                 return pattern._replace(pattern={
                     key_pattern: self._analyze(
-                        it, path + [pattern, key_pattern],
+                        it, path + (pattern, key_pattern),
                         card=pattern.stats.card)
                 })
         elif isinstance(pattern, List):
             item_pattern = self._analyze(
-                it, path + [pattern], card=pattern.stats.card)
+                it, path + (pattern,), card=pattern.stats.card)
             return pattern._replace(pattern=[item_pattern])
         else:
             return pattern
@@ -238,4 +290,4 @@ class Analyzer:
         Given some value *it* (typically an iterable or mapping), return a
         description of its structure.
         """
-        return self._analyze(it, [])
+        return self._analyze(it, ())

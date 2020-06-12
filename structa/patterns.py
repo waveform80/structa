@@ -3,15 +3,17 @@ from datetime import datetime
 from collections import namedtuple
 from textwrap import indent, shorten
 
+from .chars import Digit, AnyChar
+
 
 def format_int(i):
     """
     Reduce *i* by some appropriate power of 2 and suffix it with an appropriate
     Greek qualifier (K for kilo, M for mega, etc.)
     """
-    suffixes = ['', 'K', 'M', 'G', 'T', 'P']
+    suffixes = ('', 'K', 'M', 'G', 'T', 'P')
     try:
-        index = min(len(suffixes) - 1, int(log(abs(i), 2) / 10))
+        index = min(len(suffixes) - 1, int(log(abs(i), 2) // 10))
     except ValueError:
         return '0'
     if not index:
@@ -43,19 +45,14 @@ class Dict(namedtuple('Dict', ('stats', 'pattern'))):
         if self.pattern is None:
             return '{}'
         else:
-            return '\n'.join(
-                '{tree} {key}:{sep}{value}'.format(
-                    tree='├─' if index < len(self.pattern) else '└─',
-                    key=key,
-                    sep='\n' if isinstance(value, Dict) else ' ',
-                    value=indent(
-                            str(value),
-                            '│  ' if index < len(self.pattern) else '   ')
-                        if isinstance(value, Dict) else
-                        value)
-                for index, (key, value) in enumerate(
-                    self.pattern.items(), start=1)
-            )
+            elems = ', '.join('{key}: {value}'.format(key=key, value=value)
+                              for key, value in self.pattern.items())
+            if '\n' in elems or len(elems) > 60:
+                elems = ',\n'.join('{key}: {value}'.format(key=key, value=value)
+                                   for key, value in self.pattern.items())
+                return '{{\n{elems}\n}}'.format(elems=indent(elems, '   '))
+            else:
+                return '{{{elems}}}'.format(elems=elems)
 
     def validate(self, value):
         return isinstance(value, dict)
@@ -96,10 +93,10 @@ class DateTime(namedtuple('DateTime', ('stats', 'pattern'))):
 
     def __str__(self):
         pattern = {
-            None: '',
-            float: '%f ',
-        }.get(self.pattern, repr(self.pattern) + ' ')
-        return '<datetime {pattern}{min}..{max}>'.format(
+            None: ' ',
+            float: ' %f',
+        }.get(self.pattern, ' ' + repr(self.pattern))
+        return '<datetime{pattern}{min}..{max}>'.format(
             pattern=pattern,
             min=self.stats.min.replace(microsecond=0),
             max=self.stats.max.replace(microsecond=0))
@@ -126,9 +123,11 @@ class Str(namedtuple('Str', ('stats', 'pattern'))):
         if self.pattern is None:
             return '<str>'
         else:
+            pattern = ''.join(
+                c if isinstance(c, str) else c.display
+                for c in self.pattern)
             return '<str {pattern}>'.format(
-                pattern=shorten(repr(self.pattern), width=60,
-                                placeholder='...'))
+                pattern=shorten(pattern, width=60, placeholder='...'))
 
     def validate(self, value):
         return (
@@ -147,11 +146,12 @@ class Int(namedtuple('Int', ('stats', 'pattern'))):
 
     def __str__(self):
         pattern = {
-            None: '',
-            10: '"dec" ',
-            16: '"hex" ',
-        }.get(self.pattern, '"???" ')
-        return '<int {pattern}{min}..{max}>'.format(
+            None: ' ',
+            8:  ' oct-str ',
+            10: ' dec-str ',
+            16: ' hex-str ',
+        }.get(self.pattern, ' ??? ')
+        return '<int{pattern}{min}..{max}>'.format(
             pattern=pattern,
             min=format_int(self.stats.min),
             max=format_int(self.stats.max))
