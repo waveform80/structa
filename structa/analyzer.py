@@ -76,17 +76,47 @@ class Analyzer:
 
     def _likely_datetime(self, value):
         """
-        Given a :class:`str` *value*, returns :data:`True` if it represents a
+        Given a :class:`float` *value*, returns :data:`True` if it represents a
         floating point value that, if treated as a UNIX timestamp (a seconds
         offset from midnight, 1st January 1970), would fall between
         :attr:`min_timestamp` and :attr:`max_timestamp`.
         """
-        try:
-            value = float(value)
-        except ValueError:
-            return False
-        else:
-            return self.min_timestamp <= value <= self.max_timestamp
+        return self.min_timestamp <= value <= self.max_timestamp
+
+    def _match_fixed_len_str(self, items):
+        """
+        Given a :class:`set` of strings in *items*, discover any common
+        fixed-length patterns that cover the entire cohort.
+        """
+        # We're dealing with (mostly) fixed length strings
+        for pattern in DATETIME_FORMATS:
+            if all(is_datetime(value, pattern) for value in items):
+                return DateTime(items, pattern)
+        pattern = []
+        base = 0
+        for chars in zip(*items): # transpose
+            chars = set(chars)
+            if len(chars) == 1:
+                pattern.append(chars.pop())
+            elif chars <= HexDigit.chars:
+                pattern.append(Digit)
+                if chars <= OctDigit.chars:
+                    base = max(base, 8)
+                elif chars <= DecDigit.chars:
+                    base = max(base, 10)
+                else:
+                    base = max(base, 16)
+            else:
+                pattern.append(AnyChar)
+        pattern = tuple(
+            (
+                HexDigit if base == 16 else
+                DecDigit if base == 10 else
+                OctDigit
+            ) if char == Digit else char
+            for char in pattern
+        )
+        return Str(items, pattern)
 
     def _match_str(self, items):
         """
@@ -114,35 +144,7 @@ class Analyzer:
 
         stats = Stats(len(value) for value in cohort)
         if stats.min == stats.max:
-            # We're dealing with (mostly) fixed length strings
-            for pattern in DATETIME_FORMATS:
-                if all(is_datetime(value, pattern) for value in cohort):
-                    return DateTime(cohort, pattern)
-            pattern = []
-            base = 0
-            for chars in zip(*cohort): # transpose
-                chars = set(chars)
-                if len(chars) == 1:
-                    pattern.append(chars.pop())
-                elif chars <= HexDigit.chars:
-                    pattern.append(Digit)
-                    if chars <= OctDigit.chars:
-                        base = max(base, 8)
-                    elif chars <= DecDigit.chars:
-                        base = max(base, 10)
-                    else:
-                        base = max(base, 16)
-                else:
-                    pattern.append(AnyChar)
-            pattern = tuple(
-                (
-                    HexDigit if base == 16 else
-                    DecDigit if base == 10 else
-                    OctDigit
-                ) if char == Digit else char
-                for char in pattern
-            )
-            return Str(cohort, pattern)
+            return self._match_fixed_len_str(cohort)
         elif stats.max < self.max_numeric_len:
             if all(is_dec(value) for value in cohort):
                 return Int(cohort, 10)
