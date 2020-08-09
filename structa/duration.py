@@ -33,6 +33,9 @@ def parse_duration(s):
             m = regex.search(t)
             if m:
                 spans[span] += int(m.group('num'))
+                # XXX This only truncates from the start; that in turn means
+                # that things must be ordered year/month/day/hour/etc. Make
+                # the algorithm order agnostic
                 t = t[len(m.group(0)):]
                 break
         else:

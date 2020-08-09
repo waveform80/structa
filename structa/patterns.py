@@ -2,6 +2,7 @@ from math import log
 from datetime import datetime
 from collections import namedtuple
 from textwrap import indent, shorten
+from functools import partial
 
 from .chars import Digit, AnyChar
 
@@ -24,12 +25,48 @@ def format_int(i):
             suffix=suffixes[index])
 
 
+def to_bool(s):
+    try:
+        return {
+            '0':     False,
+            'f':     False,
+            'n':     False,
+            'false': False,
+            'no':    False,
+            'off':   False,
+            '1':     True,
+            't':     True,
+            'y':     True,
+            'true':  True,
+            'yes':   True,
+            'on':    True,
+        }[s.strip().lower()]
+    except KeyError:
+        raise ValueError('not a valid bool {!r}'.format(s))
+
+
+def try_conversion(iterable, conversion, threshold=0):
+    if not threshold:
+        return {conversion(element) for element in iterable}
+    assert threshold > 0
+    sample = set()
+    for element in iterable:
+        try:
+            sample.add(conversion(element))
+        except ValueError: # XXX and TypeError?
+            if not threshold:
+                raise
+            threshold -= 1
+    return sample
+
+
 class Stats(namedtuple('Stats', ('card', 'min', 'max', 'median'))):
     """
     Return the minimum, maximum, and (rough) median of the integer
     *values* list.
     """
     def __new__(cls, values):
+        # XXX Add most/least selective/popular? (if isinstance(values, Counter)?)
         values = sorted(values)
         return super().__new__(
             cls, len(values), values[0], values[-1], values[len(values) // 2])
@@ -55,6 +92,8 @@ class Dict(namedtuple('Dict', ('stats', 'pattern'))):
                 return '{{{elems}}}'.format(elems=elems)
 
     def validate(self, value):
+        # XXX Make validate a procedure which raises a validation exception;
+        # TypeError or ValueError accordingly (bad type or just wrong range)
         return isinstance(value, dict)
 
 
@@ -79,17 +118,21 @@ class List(namedtuple('List', ('stats', 'pattern'))):
         return isinstance(value, list)
 
 
-class DateTime(namedtuple('DateTime', ('stats', 'pattern'))):
+class DateTime(namedtuple('DateTime', ('stats', 'pattern', 'unique'))):
     __slots__ = ()
 
-    def __new__(cls, sample, pattern=None):
+    def __new__(cls, sample, pattern=None, unique=False):
+        return super().__new__(cls, Stats(sample), pattern, unique)
+
+    @classmethod
+    def from_strings(cls, iterable, pattern, unique=False, bad_threshold=0):
         if pattern is float:
-            sample = (datetime.fromtimestamp(float(value))
-                      for value in sample)
-        elif pattern is not None:
-            sample = (datetime.strptime(value, pattern)
-                      for value in sample)
-        return super().__new__(cls, Stats(sample), pattern)
+            conv = lambda s: datetime.fromtimestamp(float(s))
+        else:
+            conv = lambda s: datetime.strptime(s, pattern)
+        return cls(
+            try_conversion(iterable, conv, bad_threshold),
+            pattern=pattern, unique=unique)
 
     def __str__(self):
         pattern = {
@@ -112,12 +155,12 @@ class DateTime(namedtuple('DateTime', ('stats', 'pattern'))):
             return True
 
 
-class Str(namedtuple('Str', ('stats', 'pattern'))):
+class Str(namedtuple('Str', ('stats', 'pattern', 'unique'))):
     __slots__ = ()
 
-    def __new__(cls, sample, pattern=None):
+    def __new__(cls, sample, pattern=None, unique=False):
         lengths = (len(value) for value in sample)
-        return super().__new__(cls, Stats(lengths), pattern)
+        return super().__new__(cls, Stats(lengths), pattern, unique)
 
     def __str__(self):
         if self.pattern is None:
@@ -136,13 +179,17 @@ class Str(namedtuple('Str', ('stats', 'pattern'))):
         )
 
 
-class Int(namedtuple('Int', ('stats', 'pattern'))):
+class Int(namedtuple('Int', ('stats', 'pattern', 'unique'))):
     __slots__ = ()
 
-    def __new__(cls, sample, base=None):
-        if base is not None:
-            sample = (int(value, base) for value in sample)
-        return super().__new__(cls, Stats(sample), base)
+    def __new__(cls, sample, base=None, unique=False):
+        return super().__new__(cls, Stats(sample), base, unique)
+
+    @classmethod
+    def from_strings(cls, iterable, base, unique=False, bad_threshold=0):
+        return cls(
+            try_conversion(iterable, partial(int, base=base), bad_threshold),
+            base=base, unique=unique)
 
     def __str__(self):
         pattern = {
@@ -163,24 +210,35 @@ class Int(namedtuple('Int', ('stats', 'pattern'))):
         )
 
 
-class Float(namedtuple('Float', ('stats', 'pattern'))):
+class Float(namedtuple('Float', ('stats', 'pattern', 'unique'))):
     __slots__ = ()
 
-    def __new__(cls, sample, pattern=None):
-        if pattern is not None:
-            sample = (float(value) for value in sample)
-        return super().__new__(cls, Stats(sample), pattern)
+    def __new__(cls, sample, pattern=None, unique=False):
+        return super().__new__(cls, Stats(sample), pattern, unique)
+
+    @classmethod
+    def from_strings(cls, iterable, pattern, unique=False, bad_threshold=0):
+        return cls(
+            try_conversion(iterable, float, bad_threshold),
+            pattern=pattern, unique=unique)
 
     def __str__(self):
         return '<float {min:.1f}..{max:.1f}>'.format(
             min=self.stats.min, max=self.stats.max)
 
 
-class Bool(namedtuple('Bool', ('card',))):
+class Bool(namedtuple('Bool', ('stats',))):
     __slots__ = ()
+
+    def __new__(cls, sample):
+        return super().__new__(cls, Stats(sample))
 
     def __str__(self):
         return '<bool>'
+
+    @classmethod
+    def from_strings(cls, iterable, bad_threshold=0):
+        return cls(try_conversion(iterable, to_bool, bad_threshold))
 
     def validate(self, value):
         return (
@@ -189,8 +247,12 @@ class Bool(namedtuple('Bool', ('card',))):
         )
 
 
-class URL:
+class URL(namedtuple('URL', ('unique',))):
     __slots__ = ()
+
+    def __new__(cls, unique=False):
+        # XXX Analyze sample for common scheme/host/path-patterns
+        return super().__new__(cls, unique)
 
     def __str__(self):
         return '<URL>'
@@ -199,6 +261,7 @@ class URL:
         return 'URL()'
 
     def validate(self, value):
+        # XXX Update
         return value.startswith(('http://', 'https://'))
 
 

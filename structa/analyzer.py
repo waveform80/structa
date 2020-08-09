@@ -1,4 +1,5 @@
 import warnings
+from math import ceil
 from datetime import datetime, timedelta
 from functools import partial
 from collections import Counter
@@ -7,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 
 from .chars import AnyChar, Digit, OctDigit, DecDigit, HexDigit
 from .patterns import (
+    try_conversion,
     Bool,
     Choice,
     Choices,
@@ -23,7 +25,7 @@ from .patterns import (
 )
 
 
-DATETIME_FORMATS = {
+FIXED_DATETIME_FORMATS = {
     '%Y-%m-%dT%H:%M:%S.%f',
     '%Y-%m-%dT%H:%M:%S',
     '%Y-%m-%dT%H:%M',
@@ -31,22 +33,17 @@ DATETIME_FORMATS = {
     '%Y-%m-%d %H:%M:%S',
     '%Y-%m-%d %H:%M',
     '%Y-%m-%d',
+    '%a, %d %b %Y %H:%M:%S',
+    '%a, %d %b %Y %H:%M:%S %Z',
 }
-
-def try_conv(conv, value):
-    try:
-        conv(value)
-    except ValueError:
-        return False
-    else:
-        return True
-
-is_oct = partial(try_conv, partial(int, base=8))
-is_dec = partial(try_conv, partial(int, base=10))
-is_hex = partial(try_conv, partial(int, base=16))
-is_float = partial(try_conv, float)
-def is_datetime(value, fmt):
-    return try_conv(lambda v: datetime.strptime(v, fmt), value)
+VAR_DATETIME_FORMATS = {
+    '%Y-%m-%dT%H:%M:%S.%f%z',
+    '%Y-%m-%dT%H:%M:%S%z',
+    '%Y-%m-%dT%H:%M%z',
+    '%Y-%m-%d %H:%M:%S.%f%z',
+    '%Y-%m-%d %H:%M:%S%z',
+    '%Y-%m-%d %H:%M%z',
+}
 
 
 class ValidationWarning(Warning):
@@ -81,17 +78,27 @@ class Analyzer:
         offset from midnight, 1st January 1970), would fall between
         :attr:`min_timestamp` and :attr:`max_timestamp`.
         """
-        return self.min_timestamp <= value <= self.max_timestamp
+        return self.min_timestamp <= float(value) <= self.max_timestamp
 
-    def _match_fixed_len_str(self, items):
+    def _float_or_datetime(self, sample, unique=False, bad_threshold=0):
+        sample = try_conversion(sample, float, bad_threshold)
+        if all(self._likely_datetime(value) for value in sample):
+            return DateTime(sample, float, unique)
+        else:
+            return Float(sample, 'f', unique)  # XXX Refine pattern ('e' / 'f')
+
+    def _match_fixed_len_str(self, items, unique=False, bad_threshold=0):
         """
         Given a :class:`set` of strings in *items*, discover any common
-        fixed-length patterns that cover the entire cohort.
+        fixed-length patterns that cover the entire sample.
         """
         # We're dealing with (mostly) fixed length strings
-        for pattern in DATETIME_FORMATS:
-            if all(is_datetime(value, pattern) for value in items):
-                return DateTime(items, pattern)
+        for pattern in FIXED_DATETIME_FORMATS | VAR_DATETIME_FORMATS:
+            try:
+                return DateTime.from_strings(items, pattern, unique=unique,
+                                             bad_threshold=bad_threshold)
+            except ValueError:
+                pass
         pattern = []
         base = 0
         for chars in zip(*items): # transpose
@@ -116,9 +123,9 @@ class Analyzer:
             ) if char == Digit else char
             for char in pattern
         )
-        return Str(items, pattern)
+        return Str(items, pattern, unique=unique)
 
-    def _match_str(self, items):
+    def _match_str(self, items, unique=False):
         """
         Given a :class:`~collections.Counter` of strings in *items*, find any
         common fixed-length patterns or string-encoded ints, floats, and a
@@ -130,37 +137,60 @@ class Analyzer:
             if items[''] / total > self.empty_threshold:
                 return Str(items.keys())
             del items['']
-        if self.bad_threshold == 0:
-            cohort = items.keys()
+        bad_threshold = ceil(total * self.bad_threshold)
+        if unique or bad_threshold == 0:
+            sample = items.keys()
         else:
-            min_coverage = total - int(total * self.bad_threshold)
+            min_coverage = total - bad_threshold
             coverage = 0
-            cohort = set()
+            sample = set()
             for item, count in items.most_common():
-                cohort.add(item)
+                sample.add(item)
                 coverage += count
                 if coverage >= min_coverage:
+                    # We've excluded potentially bad values based on
+                    # popularity
+                    bad_threshold = 0
+                    break
+                elif count == 1:
+                    # Too many unique values to determine which should be
+                    # ignored by popularity; just use regular bad_threshold
+                    sample = items.keys()
                     break
 
-        stats = Stats(len(value) for value in cohort)
+        stats = Stats(len(value) for value in sample)
         if stats.min == stats.max:
-            return self._match_fixed_len_str(cohort)
+            return self._match_fixed_len_str(sample, unique=unique,
+                                             bad_threshold=bad_threshold)
         elif stats.max < self.max_numeric_len:
-            if all(is_dec(value) for value in cohort):
-                return Int(cohort, 10)
-            elif all(is_hex(value) for value in cohort):
-                return Int(cohort, 16)
-            elif all(is_oct(value) for value in cohort):
-                return Int(cohort, 8)
-            elif all(is_float(value) for value in cohort):
-                if all(self._likely_datetime(float(value)) for value in cohort):
-                    return DateTime(cohort, float)
-                else:
-                    return Float(cohort, float)
-        if all(value.startswith(('http://', 'https://')) for value in cohort):
-            return URL()
+            conversions = (
+                partial(Bool.from_strings, bad_threshold=bad_threshold),
+                partial(Int.from_strings, base=8, unique=unique,
+                        bad_threshold=bad_threshold),
+                partial(Int.from_strings, base=10, unique=unique,
+                        bad_threshold=bad_threshold),
+                partial(Int.from_strings, base=16, unique=unique,
+                        bad_threshold=bad_threshold),
+                partial(self._float_or_datetime, unique=unique,
+                        bad_threshold=bad_threshold),
+                # XXX Add is_base64 (and others?)
+            )
+            for conversion in conversions:
+                try:
+                    return conversion(sample)
+                except ValueError:
+                    pass
+        for pattern in VAR_DATETIME_FORMATS:
+            try:
+                return DateTime.from_strings(sample, pattern, unique=unique,
+                                             bad_threshold=bad_threshold)
+            except ValueError:
+                pass
+        if all(value.startswith(('http://', 'https://')) for value in sample):
+            # XXX Refine this to parse URLs
+            return URL(unique=unique)
         else:
-            return Str(cohort)
+            return Str(sample, unique=unique)
 
     def _match(self, items, *, threshold=None, parent_card=None):
         """
@@ -182,9 +212,12 @@ class Analyzer:
             except TypeError:
                 return Value()
             else:
+                max_card = max(card.values())
+                unique = max_card == 1
                 if parent_card is None:
                     try:
-                        parent_card = max(card.values())
+                        # XXX What is this for?
+                        parent_card = max_card
                     except ValueError:
                         parent_card = 0
                 if len(card) < threshold:
@@ -192,22 +225,24 @@ class Analyzer:
                         Choice(key, optional=count < parent_card)
                         for key, count in card.items()
                     )
+                elif all(isinstance(value, bool) for value in card):
+                    return Bool(card)
                 elif all(isinstance(value, int) for value in card):
-                    return Int(card)
+                    return Int(card, unique=unique)
                 elif all(isinstance(value, float) for value in card):
                     if all(self._likely_datetime(value) for value in card):
-                        return DateTime(card, float)
+                        return DateTime(card, float, unique=unique)
                     else:
-                        return Float(card)
+                        return Float(card, unique=unique)
                 elif all(isinstance(value, datetime) for value in card):
-                    return DateTime(card)
+                    return DateTime(card, unique=unique)
                 elif all(isinstance(value, str) for value in card):
                     if self.strip_whitespace:
                         card = Counter({
                             s.strip(): count
                             for s, count in card.items()
                         })
-                    return self._match_str(card)
+                    return self._match_str(card, unique=unique)
                 else:
                     return Value()
 
