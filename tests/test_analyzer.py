@@ -32,26 +32,26 @@ def test_analyze_scalar():
 def test_analyze_list():
     data = list(range(10))
     assert Analyzer().analyze(data) == List(
-        sample=[len(data)], pattern=[Choices(
+        sample=[data], pattern=[Choices(
             Choice(value=n, optional=False)
             for n in data
         )])
     data = list(range(100))
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[len(data)], pattern=[Int(sample=data, unique=True)])
+        sample=[data], pattern=[Int(sample=data, unique=True)])
 
 
 def test_analyze_dict():
     data = {chr(ord('A') + n): n for n in range(10)}
     assert Analyzer().analyze(data) == Dict(
-        sample=[len(data)], pattern={
+        sample=[data], pattern={
             Choice(value=key, optional=False):
             Choices({Choice(value=value, optional=False)})
             for key, value in data.items()
         })
     data = {chr(ord('A') + n): n for n in range(50)}
     assert Analyzer(bad_threshold=0).analyze(data) == Dict(
-        sample=[len(data)], pattern={
+        sample=[data], pattern={
             Str(sample=data.keys(), pattern=(AnyChar,), unique=True):
             Int(sample=data.values(), unique=True)
         })
@@ -61,7 +61,15 @@ def test_analyze_int_bases():
     data = [hex(n) for n in random.sample(range(1000000), 1000)]
     data.append('0xA')  # Ensure there's at least one value with an alpha char
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[len(data)], pattern=[Int.from_strings(data, base=16, unique=True)])
+        sample=[data], pattern=[Int.from_strings(data, pattern='x', unique=True)])
+
+
+def test_analyze_fixed_hex_str():
+    data = ['0x{:02x}'.format(n) for n in range(256)] * 10
+    assert Analyzer(bad_threshold=0).analyze(data) == List(
+        sample=[data],
+        pattern=[Str(data, pattern=('0', 'x', HexDigit, HexDigit), unique=False)]
+    )
 
 
 def test_analyze_datetime_str():
@@ -74,8 +82,9 @@ def test_analyze_datetime_str():
     ]
     data = [date.strftime('%Y-%m-%d %H:%M:%S') for date in dates]
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[len(data)],
-        pattern=[DateTime(sample=dates, pattern='%Y-%m-%d %H:%M:%S', unique=True)])
+        sample=[data],
+        pattern=[StrRepr(DateTime(sample=dates, unique=True),
+                         pattern='%Y-%m-%d %H:%M:%S')])
 
 
 def test_analyze_datetime_str_varlen():
@@ -91,8 +100,9 @@ def test_analyze_datetime_str_varlen():
         for i, date in enumerate(dates)
     ]
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[len(data)],
-        pattern=[DateTime(sample=dates, pattern='%Y-%m-%d %H:%M:%S%z', unique=True)])
+        sample=[data],
+        pattern=[StrRepr(DateTime(sample=dates, unique=True),
+                         pattern='%Y-%m-%d %H:%M:%S%z')])
 
 
 def test_analyze_datetime_float():
@@ -101,8 +111,13 @@ def test_analyze_datetime_float():
     finish = (now + dt.timedelta(days=50)).timestamp()
     data = list(frange(start, finish, step=86400.0))
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[len(data)],
-        pattern=[DateTime(sample=data, pattern=float, unique=True)])
+        sample=[data],
+        pattern=[NumRepr(
+            DateTime(
+                sample=[dt.datetime.fromtimestamp(n) for n in data],
+                unique=True),
+            pattern=float)]
+    )
 
 
 def test_analyze_datetime_bad_range():
@@ -117,7 +132,7 @@ def test_analyze_datetime_bad_range():
                     min_timestamp=dt.datetime.fromtimestamp(now),
                     max_timestamp=dt.datetime.fromtimestamp(finish)
                     ).analyze(data) == List(
-        sample=[len(data)],
+        sample=[data],
         pattern=[Float(sample=data, unique=True)])
 
 
@@ -128,7 +143,7 @@ def test_analyze_any_value_list():
         list(chr(ord('A') + n) for n in range(26))
     )
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[len(data)], pattern=[Value()])
+        sample=[data], pattern=[Value()])
 
 
 def test_analyze_strs_with_blanks():
@@ -146,8 +161,9 @@ def test_analyze_strs_with_blanks():
     ] + ['' for n in range(10)]
     random.shuffle(data)
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[len(data)],
-        pattern=[DateTime(sample=dates, pattern='%Y-%m-%d %H:%M:%S')])
+        sample=[data],
+        pattern=[StrRepr(DateTime(sample=dates),
+                         pattern='%Y-%m-%d %H:%M:%S')])
 
 
 def test_analyze_too_many_blanks():
@@ -162,7 +178,7 @@ def test_analyze_too_many_blanks():
     ] + ['' for n in range(50)]
     random.shuffle(data)
     assert Analyzer(bad_threshold=0, empty_threshold=40).analyze(data) == List(
-        sample=[len(data)],
+        sample=[data],
         pattern=[Str(sample=set(data), pattern=None)])
 
 
@@ -182,6 +198,6 @@ def test_analyze_datetime_with_bad_data():
     data = list(data)
     random.shuffle(data)
     assert Analyzer(bad_threshold=2).analyze(data) == List(
-        sample=[len(data)],
-        pattern=[DateTime(sample=dates, pattern='%Y-%m-%d %H:%M:%S', unique=True)])
-
+        sample=[data],
+        pattern=[StrRepr(DateTime(sample=dates, unique=True),
+                         pattern='%Y-%m-%d %H:%M:%S')])

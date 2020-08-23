@@ -22,10 +22,22 @@ from .patterns import (
     Str,
     URL,
     Value,
+    StrRepr,
 )
 
 
-FIXED_DATETIME_FORMATS = {
+BOOL_PATTERNS = (
+    '0|1',
+    'f|t',
+    'n|y',
+    'false|true',
+    'no|yes',
+    'off|on',
+    '|x',
+    '|y',
+)
+INT_PATTERNS = ('o', 'd', 'x')  # Order matters for these
+FIXED_DATETIME_PATTERNS = {
     '%Y-%m-%dT%H:%M:%S.%f',
     '%Y-%m-%dT%H:%M:%S',
     '%Y-%m-%dT%H:%M',
@@ -36,7 +48,7 @@ FIXED_DATETIME_FORMATS = {
     '%a, %d %b %Y %H:%M:%S',
     '%a, %d %b %Y %H:%M:%S %Z',
 }
-VAR_DATETIME_FORMATS = {
+VAR_DATETIME_PATTERNS = {
     '%Y-%m-%dT%H:%M:%S.%f%z',
     '%Y-%m-%dT%H:%M:%S%z',
     '%Y-%m-%dT%H:%M%z',
@@ -71,29 +83,14 @@ class Analyzer:
         self.min_timestamp = min_timestamp.timestamp()
         self.max_timestamp = max_timestamp.timestamp()
 
-    def _likely_datetime(self, value):
+    def _match_fixed_len_str(self, items, *, unique=False, bad_threshold=0):
         """
-        Given a :class:`float` *value*, returns :data:`True` if it represents a
-        floating point value that, if treated as a UNIX timestamp (a seconds
-        offset from midnight, 1st January 1970), would fall between
-        :attr:`min_timestamp` and :attr:`max_timestamp`.
-        """
-        return self.min_timestamp <= float(value) <= self.max_timestamp
-
-    def _float_or_datetime(self, sample, unique=False, bad_threshold=0):
-        sample = try_conversion(sample, float, bad_threshold)
-        if all(self._likely_datetime(value) for value in sample):
-            return DateTime(sample, float, unique)
-        else:
-            return Float(sample, 'f', unique)  # XXX Refine pattern ('e' / 'f')
-
-    def _match_fixed_len_str(self, items, unique=False, bad_threshold=0):
-        """
-        Given a :class:`set` of strings in *items*, discover any common
-        fixed-length patterns that cover the entire sample.
+        Given a :class:`~collections.Counter` of strings all of the same length
+        in *items*, discover any common fixed-length patterns that cover the
+        entire sample.
         """
         # We're dealing with (mostly) fixed length strings
-        for pattern in FIXED_DATETIME_FORMATS | VAR_DATETIME_FORMATS:
+        for pattern in FIXED_DATETIME_PATTERNS | VAR_DATETIME_PATTERNS:
             try:
                 return DateTime.from_strings(items, pattern, unique=unique,
                                              bad_threshold=bad_threshold)
@@ -125,12 +122,66 @@ class Analyzer:
         )
         return Str(items, pattern, unique=unique)
 
-    def _match_str(self, items, unique=False):
+    def _match_numeric_str(self, items, *, unique=False, bad_threshold=0):
+        """
+        Given a :class:`~collections.Counter` of strings in *items*, attempt a
+        variety of numeric conversions on them to discover if they represent a
+        numbers (or timestamps).
+        """
+        representations = (
+            (partial(
+                Bool.from_strings,
+                bad_threshold=bad_threshold), BOOL_PATTERNS),
+            (partial(
+                Int.from_strings,
+                unique=unique, bad_threshold=bad_threshold), INT_PATTERNS),
+            (partial(
+                Float.from_strings,
+                unique=unique, bad_threshold=bad_threshold), ('f',)),
+            (partial(
+                DateTime.from_strings,
+                unique=unique, bad_threshold=bad_threshold), VAR_DATETIME_PATTERNS),
+        )
+        for conversion, formats in representations:
+            for fmt in formats:
+                try:
+                    return conversion(items, fmt)
+                except ValueError:
+                    pass
+        return None
+
+    def _match_possible_datetime(self, pattern):
+        """
+        Given an already matched numeric *pattern*, check whether the range
+        of values are "likely" date-times based on whether they fall between
+        :attr:`min_timestamp` and :attr:`max_timestamp`. If they are, return a
+        numerically-wrapped :class:`DateTime` pattern instead. Otherwise,
+        return the original *pattern*.
+        """
+        in_range = lambda n: self.min_timestamp <= n <= self.max_timestamp
+        if (
+                isinstance(pattern, (Int, Float)) and
+                in_range(pattern.stats.min) and
+                in_range(pattern.stats.max)):
+            return DateTime.from_numbers(pattern)
+        elif (
+                isinstance(pattern, StrRepr) and (
+                    (isinstance(pattern.inner, Int) and pattern.pattern == 'd') or
+                    isinstance(pattern.inner, Float)
+                ) and
+                in_range(pattern.inner.stats.min) and
+                in_range(pattern.inner.stats.max)):
+            return DateTime.from_numbers(pattern)
+        else:
+            return pattern
+
+    def _match_str(self, items, *, unique=False):
         """
         Given a :class:`~collections.Counter` of strings in *items*, find any
         common fixed-length patterns or string-encoded ints, floats, and a
-        variety of date-time formats in a majority of the entries (covering
-        greater than *min_coverage* percent of them).
+        variety of date-time formats in a majority of the entries (no more
+        than :attr:`bad_threshold` percent invalid conversions), provided the
+        maximum string length is below :attr:`max_numeric_len`.
         """
         total = sum(items.values())
         if '' in items:
@@ -139,13 +190,13 @@ class Analyzer:
             del items['']
         bad_threshold = ceil(total * self.bad_threshold)
         if unique or bad_threshold == 0:
-            sample = items.keys()
+            sample = items
         else:
             min_coverage = total - bad_threshold
             coverage = 0
-            sample = set()
+            sample = Counter()
             for item, count in items.most_common():
-                sample.add(item)
+                sample[item] = count
                 coverage += count
                 if coverage >= min_coverage:
                     # We've excluded potentially bad values based on
@@ -155,37 +206,19 @@ class Analyzer:
                 elif count == 1:
                     # Too many unique values to determine which should be
                     # ignored by popularity; just use regular bad_threshold
-                    sample = items.keys()
+                    sample = items
                     break
 
-        stats = Stats(len(value) for value in sample)
+        stats = Stats.from_lengths(sample)
         if stats.min == stats.max:
             return self._match_fixed_len_str(sample, unique=unique,
                                              bad_threshold=bad_threshold)
         elif stats.max < self.max_numeric_len:
-            conversions = (
-                partial(Bool.from_strings, bad_threshold=bad_threshold),
-                partial(Int.from_strings, base=8, unique=unique,
-                        bad_threshold=bad_threshold),
-                partial(Int.from_strings, base=10, unique=unique,
-                        bad_threshold=bad_threshold),
-                partial(Int.from_strings, base=16, unique=unique,
-                        bad_threshold=bad_threshold),
-                partial(self._float_or_datetime, unique=unique,
-                        bad_threshold=bad_threshold),
-                # XXX Add is_base64 (and others?)
-            )
-            for conversion in conversions:
-                try:
-                    return conversion(sample)
-                except ValueError:
-                    pass
-        for pattern in VAR_DATETIME_FORMATS:
-            try:
-                return DateTime.from_strings(sample, pattern, unique=unique,
+            result = self._match_numeric_str(sample, unique=unique,
                                              bad_threshold=bad_threshold)
-            except ValueError:
-                pass
+            if result is not None:
+                return self._match_possible_datetime(result)
+        # XXX Add is_base64 (and others?)
         if all(value.startswith(('http://', 'https://')) for value in sample):
             # XXX Refine this to parse URLs
             return URL(unique=unique)
@@ -203,9 +236,9 @@ class Analyzer:
         if not items:
             return Empty()
         elif all(isinstance(item, list) for item in items):
-            return List(len(item) for item in items)
+            return List(items)
         elif all(isinstance(item, dict) for item in items):
-            return Dict(len(item) for item in items)
+            return Dict(items)
         else:
             try:
                 card = Counter(items)
@@ -228,12 +261,11 @@ class Analyzer:
                 elif all(isinstance(value, bool) for value in card):
                     return Bool(card)
                 elif all(isinstance(value, int) for value in card):
-                    return Int(card, unique=unique)
+                    return self._match_possible_datetime(
+                        Int(card, unique=unique))
                 elif all(isinstance(value, float) for value in card):
-                    if all(self._likely_datetime(value) for value in card):
-                        return DateTime(card, float, unique=unique)
-                    else:
-                        return Float(card, unique=unique)
+                    return self._match_possible_datetime(
+                        Float(card, unique=unique))
                 elif all(isinstance(value, datetime) for value in card):
                     return DateTime(card, unique=unique)
                 elif all(isinstance(value, str) for value in card):
