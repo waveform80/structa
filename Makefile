@@ -114,8 +114,7 @@ develop: tags
 	$(PIP) install -e .[doc,test]
 
 test:
-	$(COVERAGE) run --rcfile coverage.cfg -m $(PYTEST) -v tests
-	$(COVERAGE) report --rcfile coverage.cfg
+	$(PYTEST) -v tests
 
 clean:
 	dh_clean

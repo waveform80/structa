@@ -5,6 +5,7 @@ import json
 import argparse
 import warnings
 from datetime import datetime, timedelta
+from fractions import Fraction
 
 from .analyzer import Analyzer, ValidationWarning
 from .duration import parse_duration_or_timestamp
@@ -18,25 +19,25 @@ def cli_main(args=None):
         help="The JSON file to analyze; if this is - or unspecified then "
         "stdin will be read for the data")
     parser.add_argument(
-        '-C', '--choice-threshold', type=int, metavar='NUM', default=20,
+        '-C', '--choice-threshold', type=int, metavar='INT', default=20,
         help="If the number of distinct values in a field is less than this "
         "then they will be considered distinct choices instead of being "
         "lumped under a generic type like <str> (default: %(default)s)")
     parser.add_argument(
-        '-K', '--key-threshold', type=int, metavar='NUM', default=None,
+        '-K', '--key-threshold', type=int, metavar='INT', default=None,
         help="If the number of distinct keys in a map is less than this "
         "then they will be considered distinct choices instead of being "
         "lumped under a generic type like <str> (defaults to the value of "
         "--choice-threshold)")
     parser.add_argument(
-        '-B', '--bad-threshold', type=percent, metavar='PCT', default=2,
-        help="The percentage of string values which are allowed to mismatch "
+        '-B', '--bad-threshold', type=num, metavar='NUM', default='2%',
+        help="The proportion of string values which are allowed to mismatch "
         "a pattern without preventing the pattern from being reported; the "
-        'percentage of "bad" data permitted in a field (default: %(default)s)')
+        'proportion of "bad" data permitted in a field (default: %(default)s)')
     parser.add_argument(
-        '-E', '--empty-threshold', type=percent, metavar='PCT', default=98,
-        help="The percentage of string values permitted to be empty without "
-        "preventing the pattern from being reported; the percentage of "
+        '-E', '--empty-threshold', type=num, metavar='NUM', default='98%',
+        help="The proportion of string values permitted to be empty without "
+        "preventing the pattern from being reported; the proportion of "
         '"empty" data permitted in a field (default: %(default)s)')
     parser.add_argument(
         '--min-timestamp', type=min_timestamp, metavar='WHEN',
@@ -99,11 +100,15 @@ def max_timestamp(s, now=_start):
     else:
         return now + t
 
-def percent(s):
-    n = float(s)
-    if not 0 <= n < 100:
-        raise ValueError('{} is not a valid percentage'.format(s))
-    return n
+def num(s):
+    if s.endswith('%'):
+        return Fraction(num(s[:-1]), 100)
+    elif '/' in s:
+        return Fraction(s)
+    elif '.' in s or 'e' in s:
+        return float(s)
+    else:
+        return int(s)
 
 
 if __name__ == '__main__':

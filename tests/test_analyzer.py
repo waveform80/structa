@@ -1,6 +1,8 @@
 import random
+import hashlib
 import datetime as dt
 from itertools import count
+from fractions import Fraction
 
 from structa.chars import *
 from structa.patterns import *
@@ -64,11 +66,30 @@ def test_analyze_int_bases():
         sample=[data], pattern=[Int.from_strings(data, pattern='x', unique=True)])
 
 
-def test_analyze_fixed_hex_str():
-    data = ['0x{:02x}'.format(n) for n in range(256)] * 10
+def test_analyze_fixed_oct_str():
+    data = ['mode {:03o}'.format(n) for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(data, pattern=('0', 'x', HexDigit, HexDigit), unique=False)]
+        pattern=[Str(data, pattern=('m', 'o', 'd', 'e', ' ',
+                                    OctDigit, OctDigit, OctDigit), unique=False)]
+    )
+
+
+def test_analyze_fixed_dec_str():
+    data = ['num {:03d}'.format(n) for n in range(256)] * 10
+    assert Analyzer(bad_threshold=0).analyze(data) == List(
+        sample=[data],
+        pattern=[Str(data, pattern=('n', 'u', 'm', ' ',
+                                    DecDigit, DecDigit, DecDigit), unique=False)]
+    )
+
+
+def test_analyze_fixed_hex_str():
+    data = ['hex {:02x}'.format(n) for n in range(256)] * 10
+    assert Analyzer(bad_threshold=0).analyze(data) == List(
+        sample=[data],
+        pattern=[Str(data, pattern=('h', 'e', 'x', ' ',
+                                    HexDigit, HexDigit), unique=False)]
     )
 
 
@@ -117,6 +138,22 @@ def test_analyze_datetime_float():
                 sample=[dt.datetime.fromtimestamp(n) for n in data],
                 unique=True),
             pattern=float)]
+    )
+
+
+def test_analyze_datetime_float_str():
+    now = dt.datetime.now()
+    start = (now - dt.timedelta(days=50)).timestamp()
+    finish = (now + dt.timedelta(days=50)).timestamp()
+    data = [str(f) for f in frange(start, finish, step=86400.0)]
+    from pprint import pprint; pprint(data)
+    assert Analyzer(bad_threshold=0).analyze(data) == List(
+        sample=[data],
+        pattern=[StrRepr(NumRepr(
+            DateTime(
+                sample=[dt.datetime.fromtimestamp(float(n)) for n in data],
+                unique=True),
+            pattern=float), pattern='f')]
     )
 
 
@@ -177,12 +214,12 @@ def test_analyze_too_many_blanks():
         for n in range(50)
     ] + ['' for n in range(50)]
     random.shuffle(data)
-    assert Analyzer(bad_threshold=0, empty_threshold=40).analyze(data) == List(
+    assert Analyzer(bad_threshold=0, empty_threshold=0.4).analyze(data) == List(
         sample=[data],
         pattern=[Str(sample=set(data), pattern=None)])
 
 
-def test_analyze_datetime_with_bad_data():
+def test_analyze_unique_list_with_bad_data():
     now = dt.datetime.now()
     start = (now - dt.timedelta(days=100)).timestamp()
     finish = now.timestamp()
@@ -197,7 +234,103 @@ def test_analyze_datetime_with_bad_data():
     } | {'2020-02-31 00:00:00'}
     data = list(data)
     random.shuffle(data)
-    assert Analyzer(bad_threshold=2).analyze(data) == List(
+    assert Analyzer(bad_threshold=0.02).analyze(data) == List(
         sample=[data],
         pattern=[StrRepr(DateTime(sample=dates, unique=True),
                          pattern='%Y-%m-%d %H:%M:%S')])
+
+
+def test_analyze_non_unique_list_with_bad_data():
+    now = dt.datetime.now()
+    start = (now - dt.timedelta(days=100)).timestamp()
+    finish = now.timestamp()
+    randtime = lambda: random.random() * (finish - start) + start
+    dates = [
+        dt.datetime.fromtimestamp(randtime()).replace(microsecond=0)
+        for n in range(100)
+    ]
+    dates = dates * 10
+    data = [
+        date.strftime('%Y-%m-%d %H:%M:%S') for date in dates
+    ] + ['2020-02-31 00:00:00']
+    random.shuffle(data)
+    assert Analyzer(bad_threshold=Fraction(2, 1000)).analyze(data) == List(
+        sample=[data],
+        pattern=[StrRepr(DateTime(sample=set(dates), unique=False),
+                         pattern='%Y-%m-%d %H:%M:%S')])
+
+
+def test_analyze_semi_unique_list_with_bad_data():
+    ints = list(range(50)) * 10
+    ints += list(range(51, 551))
+    data = [str(i) for i in ints] + ['foobar']
+    random.shuffle(data)
+    assert Analyzer(bad_threshold=Fraction(2, 1000)).analyze(data) == List(
+        sample=[data],
+        pattern=[StrRepr(Int(sample=set(ints), unique=False), pattern='d')])
+
+
+def test_url_list():
+    data = [
+        'http://localhost/',
+        'https://structa.readthedocs.io/',
+        'https://picamera.readthedocs.io/',
+        'https://pibootctl.readthedocs.io/',
+        'https://lars.readthedocs.io/',
+        'https://piwheels.org/',
+        'https://ubuntu.com',
+        'https://canonical.com',
+        'https://google.com',
+        'http://wikipedia.org/',
+        'https://youtube.com/',
+    ]
+    assert Analyzer(choice_threshold=5, bad_threshold=0).analyze(data) == List(
+        sample=[data],
+        pattern=[URL(unique=True)])
+
+
+def test_hashes():
+    m = hashlib.sha1()
+    data = [m.hexdigest()]
+    for c in "Flat is better than nested\nSparse is better than dense":
+        m.update(c.encode('ascii'))
+        data.append(m.hexdigest())
+    assert Analyzer(bad_threshold=0).analyze(data) == List(
+        sample=[data],
+        pattern=[Str(sample=set(data), pattern=tuple([HexDigit] * 40),
+                     unique=True)])
+
+
+def test_strings():
+    data = [
+        "This goodly frame, the earth,",
+        "seems to me a sterile promontory,",
+        "this most excellent canopy, the air,"
+        "look you, this brave o'erhanging firmament,",
+        "this majestical roof fretted with golden fire,",
+        "why, it appears no other thing to me than",
+        "a foul and pestilent congregation of vapours.",
+        "What a piece of work is a man!",
+        "how noble in reason!",
+        "how infinite in faculty!",
+        "in form and moving how express and admirable!",
+        "in action how like an angel!",
+        "in apprehension how like a god!",
+        "the beauty of the world!",
+        "the paragon of animals!",
+        "And yet, to me, what is this quintessence of dust?",
+    ]
+    assert Analyzer(choice_threshold=5, bad_threshold=0).analyze(data) == List(
+        sample=[data],
+        pattern=[Str(sample=set(data), unique=True)])
+
+
+def test_empty():
+    assert Analyzer().analyze([]) == List(sample=[[]], pattern=[Empty()])
+
+
+def test_value():
+    class Foo:
+        __hash__ = None
+    data = [Foo(), Foo(), Foo()]
+    assert Analyzer().analyze(data) == List(sample=[data], pattern=[Value()])

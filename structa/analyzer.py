@@ -2,6 +2,7 @@ import warnings
 from math import ceil
 from datetime import datetime, timedelta
 from functools import partial
+from fractions import Fraction
 from collections import Counter
 
 from dateutil.relativedelta import relativedelta
@@ -66,11 +67,12 @@ class ValidationWarning(Warning):
 
 
 class Analyzer:
-    def __init__(self, *, bad_threshold=2, empty_threshold=98,
-                 choice_threshold=20, key_threshold=20, max_numeric_len=50,
-                 strip_whitespace=False, min_timestamp=None, max_timestamp=None):
-        self.bad_threshold = bad_threshold / 100
-        self.empty_threshold = empty_threshold / 100
+    def __init__(self, *, bad_threshold=Fraction(2, 100),
+                 empty_threshold=Fraction(98, 100), choice_threshold=20,
+                 key_threshold=20, max_numeric_len=32, strip_whitespace=False,
+                 min_timestamp=None, max_timestamp=None):
+        self.bad_threshold = bad_threshold
+        self.empty_threshold = empty_threshold
         self.choice_threshold = choice_threshold
         self.key_threshold = key_threshold
         self.max_numeric_len = max_numeric_len
@@ -89,8 +91,9 @@ class Analyzer:
         in *items*, discover any common fixed-length patterns that cover the
         entire sample.
         """
-        # We're dealing with (mostly) fixed length strings
-        for pattern in FIXED_DATETIME_PATTERNS | VAR_DATETIME_PATTERNS:
+        # We're dealing with fixed length strings (we've already tested for
+        # variable length date-times)
+        for pattern in FIXED_DATETIME_PATTERNS:
             try:
                 return DateTime.from_strings(items, pattern, unique=unique,
                                              bad_threshold=bad_threshold)
@@ -210,14 +213,14 @@ class Analyzer:
                     break
 
         stats = Stats.from_lengths(sample)
-        if stats.min == stats.max:
-            return self._match_fixed_len_str(sample, unique=unique,
-                                             bad_threshold=bad_threshold)
-        elif stats.max < self.max_numeric_len:
+        if stats.max <= self.max_numeric_len:
             result = self._match_numeric_str(sample, unique=unique,
                                              bad_threshold=bad_threshold)
             if result is not None:
                 return self._match_possible_datetime(result)
+        if stats.min == stats.max:
+            return self._match_fixed_len_str(sample, unique=unique,
+                                             bad_threshold=bad_threshold)
         # XXX Add is_base64 (and others?)
         if all(value.startswith(('http://', 'https://')) for value in sample):
             # XXX Refine this to parse URLs
