@@ -250,12 +250,6 @@ class Analyzer:
             else:
                 max_card = max(card.values())
                 unique = max_card == 1
-                if parent_card is None:
-                    try:
-                        # XXX What is this for?
-                        parent_card = max_card
-                    except ValueError:
-                        parent_card = 0
                 if len(card) < threshold:
                     return Choices(
                         Choice(key, optional=count < parent_card)
@@ -273,10 +267,10 @@ class Analyzer:
                     return DateTime(card, unique=unique)
                 elif all(isinstance(value, str) for value in card):
                     if self.strip_whitespace:
-                        card = Counter({
-                            s.strip(): count
-                            for s, count in card.items()
-                        })
+                        strip_card = Counter()
+                        for s, count in card.items():
+                            strip_card[s.strip()] += count
+                        card = strip_card
                     return self._match_str(card, unique=unique)
                 else:
                     return Value()

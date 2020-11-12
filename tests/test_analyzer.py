@@ -59,6 +59,12 @@ def test_analyze_dict():
         })
 
 
+def test_analyze_bools():
+    data = [bool(i % 2) for i in range(1000)]
+    assert Analyzer(choice_threshold=0).analyze(data) == List(
+        sample=[data], pattern=[Bool(data)])
+
+
 def test_analyze_int_bases():
     data = [hex(n) for n in random.sample(range(1000000), 1000)]
     data.append('0xA')  # Ensure there's at least one value with an alpha char
@@ -91,6 +97,19 @@ def test_analyze_fixed_hex_str():
         pattern=[Str(data, pattern=('h', 'e', 'x', ' ',
                                     HexDigit, HexDigit), unique=False)]
     )
+
+
+def test_analyze_datetimes():
+    now = dt.datetime.now()
+    start = (now - dt.timedelta(days=50)).timestamp()
+    finish = (now + dt.timedelta(days=50)).timestamp()
+    data = [
+        dt.datetime.fromtimestamp(n).replace(microsecond=0)
+        for n in frange(start, finish, step=86400.0)
+    ]
+    assert Analyzer(bad_threshold=0).analyze(data) == List(
+        sample=[data],
+        pattern=[DateTime(sample=data, unique=True)])
 
 
 def test_analyze_datetime_str():
@@ -270,7 +289,7 @@ def test_analyze_semi_unique_list_with_bad_data():
         pattern=[StrRepr(Int(sample=set(ints), unique=False), pattern='d')])
 
 
-def test_url_list():
+def test_analyze_url_list():
     data = [
         'http://localhost/',
         'https://structa.readthedocs.io/',
@@ -289,7 +308,7 @@ def test_url_list():
         pattern=[URL(unique=True)])
 
 
-def test_hashes():
+def test_analyze_hashes():
     m = hashlib.sha1()
     data = [m.hexdigest()]
     for c in "Flat is better than nested\nSparse is better than dense":
@@ -301,7 +320,7 @@ def test_hashes():
                      unique=True)])
 
 
-def test_strings():
+def test_analyze_strings():
     data = [
         "This goodly frame, the earth,",
         "seems to me a sterile promontory,",
@@ -325,11 +344,26 @@ def test_strings():
         pattern=[Str(sample=set(data), unique=True)])
 
 
-def test_empty():
+def test_analyze_strings_with_strip():
+    data = [
+        (' ' * random.randint(0, 5)) +
+        random.choice(('foo', 'bar', 'baz')) +
+        (' ' * random.randint(0, 5))
+        for i in range(1000)
+    ]
+    stripped = [s.strip() for s in data]
+    assert Analyzer(choice_threshold=0, bad_threshold=0,
+                    strip_whitespace=True).analyze(data) == List(
+        sample=[data],
+        pattern=[Str(sample=stripped, pattern=(HexDigit, AnyChar, AnyChar),
+                     unique=False)])
+
+
+def test_analyze_empty():
     assert Analyzer().analyze([]) == List(sample=[[]], pattern=[Empty()])
 
 
-def test_value():
+def test_analyze_value():
     class Foo:
         __hash__ = None
     data = [Foo(), Foo(), Foo()]
