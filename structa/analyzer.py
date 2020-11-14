@@ -292,13 +292,11 @@ class Analyzer:
                     if isinstance(key_pattern, (List, Dict)):
                         assert False, "invalid key type"
                     elif isinstance(key_pattern, Choice):
-                        if key_pattern.value in it:
+                        try:
                             yield from self._extract(
                                 it[key_pattern.value], tail)
-                        elif not key_pattern.optional:
-                            warnings.warn(ValidationWarning(
-                                "mandatory key {key_pattern.value} "
-                                "missing".format(key_pattern=key_pattern)))
+                        except KeyError:
+                            assert key_pattern.optional
                     else:
                         for key, value in it.items():
                             if key_pattern.validate(key):

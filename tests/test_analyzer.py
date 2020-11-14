@@ -59,17 +59,32 @@ def test_analyze_dict():
         })
 
 
+def test_analyze_dict_optional_chocies():
+    data = [{'foo': 1, 'bar': 2}] * 999
+    data.append({'foo': 1})
+    assert Analyzer(bad_threshold=2/100).analyze(data) == List(
+        sample=[data], pattern=[Dict(
+            sample=data, pattern={
+                Choice('bar', optional=True): Choices({Choice(2, optional=True)}),
+                Choice('foo', optional=False): Choices({Choice(1, optional=False)}),
+            }
+        )]
+    )
+
+
 def test_analyze_bools():
     data = [bool(i % 2) for i in range(1000)]
     assert Analyzer(choice_threshold=0).analyze(data) == List(
-        sample=[data], pattern=[Bool(data)])
+        sample=[data], pattern=[Bool(data)]
+    )
 
 
 def test_analyze_int_bases():
     data = [hex(n) for n in random.sample(range(1000000), 1000)]
     data.append('0xA')  # Ensure there's at least one value with an alpha char
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[data], pattern=[Int.from_strings(data, pattern='x', unique=True)])
+        sample=[data], pattern=[Int.from_strings(data, pattern='x', unique=True)]
+    )
 
 
 def test_analyze_fixed_oct_str():
