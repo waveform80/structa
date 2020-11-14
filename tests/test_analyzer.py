@@ -4,9 +4,11 @@ import datetime as dt
 from itertools import count
 from fractions import Fraction
 
+import pytest
+
 from structa.chars import *
 from structa.patterns import *
-from structa.analyzer import Analyzer
+from structa.analyzer import Analyzer, ValidationWarning
 
 
 def frange(start, stop, step=1.0):
@@ -70,6 +72,21 @@ def test_analyze_dict_optional_chocies():
             }
         )]
     )
+
+
+def test_analyze_dict_invalid_choices():
+    data = [{chr(ord('A') + n): n for n in range(50)}] * 999
+    data.append({'foo': 'bar'})
+    with pytest.warns(ValidationWarning):
+        assert Analyzer(bad_threshold=1/1000).analyze(data) == List(
+            sample=[data], pattern=[Dict(
+                sample=data, pattern={
+                    Str(sample=[k for d in data[:-1] for k in d],
+                        pattern=(AnyChar,), unique=False):
+                    Int(sample=[v for d in data[:-1] for v in d.values()], unique=False)
+                }
+            )]
+        )
 
 
 def test_analyze_bools():
