@@ -434,6 +434,9 @@ class Value:
     def __str__(self):
         return 'value'
 
+    def __repr__(self):
+        return 'Value()'
+
     def __call__(self):
         return self
 
@@ -446,6 +449,9 @@ class Empty:
 
     def __str__(self):
         return ''
+
+    def __repr__(self):
+        return 'Empty()'
 
     def __call__(self):
         return self
