@@ -313,8 +313,7 @@ class Analyzer:
                 for item in it:
                     yield from self._extract(item, tail)
             else:
-                assert head.validate(it)
-                yield it
+                assert False
 
     def _analyze(self, it, path, *, threshold=None, card=1):
         """

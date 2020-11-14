@@ -75,10 +75,10 @@ def test_analyze_dict_optional_chocies():
 
 
 def test_analyze_dict_invalid_choices():
-    data = [{chr(ord('A') + n): n for n in range(50)}] * 999
+    data = [{chr(ord('A') + n): n for n in range(50)}] * 99
     data.append({'foo': 'bar'})
     with pytest.warns(ValidationWarning):
-        assert Analyzer(bad_threshold=1/1000).analyze(data) == List(
+        assert Analyzer(bad_threshold=1/100).analyze(data) == List(
             sample=[data], pattern=[Dict(
                 sample=data, pattern={
                     Str(sample=[k for d in data[:-1] for k in d],
@@ -87,6 +87,20 @@ def test_analyze_dict_invalid_choices():
                 }
             )]
         )
+
+
+def test_analyze_dict_of_dicts():
+    data = {n: {'foo': n, 'bar': n} for n in range(99)}
+    assert Analyzer().analyze(data) == Dict(
+        sample=[data], pattern={
+            Int(sample=data.keys(), unique=True): Dict(
+                sample=data.values(), pattern={
+                    Choice('foo', optional=False): Int(sample=range(99), unique=True),
+                    Choice('bar', optional=False): Int(sample=range(99), unique=True),
+                }
+            )
+        }
+    )
 
 
 def test_analyze_bools():
