@@ -13,11 +13,11 @@ _SUFFIXES = [
     ('hours',        'h((ou)?rs?)?'),
     ('days',         'd(ays?)?'),
     ('weeks',        'w(eeks?)?'),
-    ('months',       'm(onths?)?'),
-    ('years',        'y(ears?)?'),
+    ('months',       'm(on(th)?s?)?'),
+    ('years',        'y((ea)?rs?)?'),
 ]
 _SPANS = [
-    (span, re.compile('^(?:(?P<num>[+-]?\d+)\s*{})'.format(suffix)))
+    (span, re.compile(r'^(?:(?P<num>[+-]?\d+)\s*{}\b)'.format(suffix)))
     for span, suffix in _SUFFIXES
 ]
 
@@ -26,7 +26,7 @@ def parse_duration(s):
     spans = {span: 0 for span, regex in _SPANS}
     t = s
     while True:
-        t = t.lstrip()
+        t = t.lstrip(' \t\n,')
         if not t:
             return relativedelta(**spans)
         for span, regex in _SPANS:
