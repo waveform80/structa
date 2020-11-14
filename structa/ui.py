@@ -71,15 +71,15 @@ def main(args=None):
     try:
         cli_main(args)
     except Exception as e:
-        if int(os.environ.get('DEBUG', '0')):
-            try:
-                import pudb as pdb
-            except ImportError:
-                import pdb
-            pdb.post_mortem()
-        else:
-            print(str(e))
+        debug = int(os.environ.get('DEBUG', '0'))
+        if not debug:
+            print(str(e), file=sys.stderr)
             return 1
+        elif debug == 1:
+            raise
+        else:
+            import pdb
+            pdb.post_mortem()
     else:
         return 0
 
@@ -109,7 +109,3 @@ def num(s):
         return float(s)
     else:
         return int(s)
-
-
-if __name__ == '__main__':
-    main()
