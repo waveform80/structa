@@ -103,29 +103,64 @@ class Stats(namedtuple('Stats', ('card', 'min', 'max', 'median'))):
         return cls.from_sample(lengths)
 
 
-class Dict(namedtuple('Dict', ('stats', 'pattern'))):
+class Dict(namedtuple('Dict', ('stats', 'fields', 'pattern'))):
     __slots__ = ()
 
-    def __new__(cls, sample, pattern=None):
-        return super().__new__(cls, Stats.from_lengths(sample), pattern)
+    def __new__(cls, sample, fields=None, pattern=None):
+        return super().__new__(cls, Stats.from_lengths(sample), fields, pattern)
 
     def __str__(self):
         if self.pattern is None:
             return '{}'
         else:
-            elems = ', '.join('{key}: {value}'.format(key=key, value=value)
-                              for key, value in self.pattern.items())
-            if '\n' in elems or len(elems) > 60:
-                elems = ',\n'.join('{key}: {value}'.format(key=key, value=value)
-                                   for key, value in self.pattern.items())
-                return '{{\n{elems}\n}}'.format(elems=indent(elems, '    '))
+            elems = [
+                '{key}: {value}'.format(key=key, value=value)
+                for key, value in zip(self.fields, self.pattern)
+            ]
+            result = ', '.join(elems)
+            if '\n' in result or len(result) > 60:
+                result = ',\n'.join(elems)
+                return '{{\n{result}\n}}'.format(result=indent(result, '    '))
             else:
-                return '{{{elems}}}'.format(elems=elems)
+                return '{{{result}}}'.format(result=result)
 
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
         # TypeError or ValueError accordingly (bad type or just wrong range)
         return isinstance(value, dict)
+
+
+class Tuple(namedtuple('Tuple', ('stats', 'fields', 'pattern'))):
+    __slots__ = ()
+
+    def __new__(cls, sample, fields=None, pattern=None):
+        return super().__new__(cls, Stats.from_lengths(sample), fields, pattern)
+
+    def __str__(self):
+        if self.pattern is None:
+            return '()'
+        else:
+            elems = [
+                ('{field}={value}' if isinstance(field, str) else '{value}'
+                ).format(field=field, value=value)
+                for field, value in zip(self.fields, self.pattern)
+            ]
+            result = ', '.join(elems)
+            if '\n' in result or len(result) > 60:
+                result = ',\n'.join(elems)
+                return '(\n{result}\n)'.format(result=indent(result, '    '))
+            else:
+                return '({result})'.format(result=result)
+
+    def validate(self, value):
+        return isinstance(value, tuple)
+
+
+class TupleField(namedtuple('TupleField', ('index', 'name'))):
+    __slots__ = ()
+
+    def __new__(cls, index, name=None):
+        return super().__new__(cls, index, name)
 
 
 class List(namedtuple('List', ('stats', 'pattern'))):
@@ -138,12 +173,13 @@ class List(namedtuple('List', ('stats', 'pattern'))):
         if self.pattern is None:
             return '[]'
         else:
-            elems = ', '.join(str(item) for item in self.pattern)
-            if '\n' in elems or len(elems) > 60:
-                elems = ',\n'.join(str(item) for item in self.pattern)
-                return '[\n{elems}\n]'.format(elems=indent(elems, '    '))
+            elems = [str(item) for item in self.pattern]
+            result = ', '.join(elems)
+            if '\n' in result or len(result) > 60:
+                result = ',\n'.join(elems)
+                return '[\n{result}\n]'.format(result=indent(result, '    '))
             else:
-                return '[{elems}]'.format(elems=elems)
+                return '[{result}]'.format(result=result)
 
     def validate(self, value):
         return isinstance(value, list)

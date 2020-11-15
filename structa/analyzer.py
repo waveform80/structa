@@ -3,7 +3,8 @@ from math import ceil
 from datetime import datetime, timedelta
 from functools import partial
 from fractions import Fraction
-from collections import Counter
+from collections import Counter, namedtuple
+from operator import itemgetter, attrgetter
 
 from dateutil.relativedelta import relativedelta
 
@@ -19,6 +20,8 @@ from .patterns import (
     Float,
     Int,
     List,
+    Tuple,
+    TupleField,
     Stats,
     Str,
     URL,
@@ -84,6 +87,307 @@ class Analyzer:
             max_timestamp = now + relativedelta(years=10)
         self.min_timestamp = min_timestamp.timestamp()
         self.max_timestamp = max_timestamp.timestamp()
+
+    def analyze(self, it):
+        """
+        Given some value *it* (typically an iterable or mapping), return a
+        description of its structure.
+        """
+        return self._analyze(it, ())
+
+    def _analyze(self, it, path, *, threshold=None, card=1):
+        """
+        Recursively analyze the structure of *it* at the nodes described by
+        *path*. The parent cardinality is tracked in *card* (for the purposes
+        of determining optional choices).
+        """
+        pattern = self._match(self._extract(it, path),
+                              threshold=threshold, parent_card=card)
+
+        if isinstance(pattern, Dict):
+            return self._analyze_dict(it, path, pattern)
+        elif isinstance(pattern, Tuple):
+            return self._analyze_tuple(it, path, pattern)
+        elif isinstance(pattern, List):
+            # Lists are expected to be homogeneous, therefore there's a single
+            # item pattern
+            item_pattern = self._analyze(
+                it, path + (pattern,), card=pattern.stats.card)
+            return pattern._replace(pattern=[item_pattern])
+        else:
+            return pattern
+
+    def _analyze_dict(self, it, path, pattern):
+        fields = self._analyze(
+            it, path + (pattern,),
+            threshold=self.key_threshold,
+            card=pattern.stats.card)
+        if isinstance(fields, Choices):
+            # XXX: This relies on the assumption that the iteration order
+            # of sets (or frozensets) is stable; for further discussion:
+            # https://twitter.com/waveform80/status/1328034156450893825
+            return pattern._replace(fields=fields, pattern=tuple(
+                self._analyze(
+                    it, path + (pattern, choice),
+                    card=pattern.stats.card)
+                for choice in fields
+            ))
+        else:
+            return pattern._replace(fields={fields}, pattern=(
+                self._analyze(
+                    it, path + (pattern, fields),
+                    card=pattern.stats.card),
+            ))
+
+    def _analyze_tuple(self, it, path, pattern):
+        # Tuples are expected to be heterogeneous, so we attempt to treat
+        # them as a tuple (possibly named) of item patterns
+        fields = self._analyze(
+            it, path + (pattern,),
+            threshold=self.key_threshold,
+            card=pattern.stats.card)
+        if isinstance(fields, Choices):
+            # XXX: What about fields that move index? e.g. consider a data-set
+            # with optional fields; fields after the optional ones will change
+            # index. Considerably more intelligence could likely be applied
+            # here...
+            if all(choice.value.name is not None for choice in fields):
+                field_def = attrgetter('name')
+            else:
+                field_def = attrgetter('index')
+            fields = tuple(
+                Choice(field_def(choice.value), choice.optional)
+                for choice in sorted(fields, key=attrgetter('value'))
+            )
+            return pattern._replace(fields=fields, pattern=tuple(
+                self._analyze(
+                    it, path + (pattern, choice),
+                    card=pattern.stats.card)
+                for choice in fields
+            ))
+        else:
+            return pattern._replace(fields=(fields,), pattern=(
+                self._analyze(
+                    it, path + (pattern, fields),
+                    card=pattern.stats.card),
+            ))
+
+    def _extract(self, it, path):
+        """
+        Extract all entries from *it* (a potentially nested iterable which is
+        the top-level object passed to :func:`analyze`), at the level dictated
+        by *path*, a sequence of pattern-matching objects.
+        """
+        if not path:
+            yield it
+        else:
+            head, *tail = path
+            if isinstance(head, Dict):
+                yield from self._extract_dict(it, tail)
+            elif isinstance(head, Tuple):
+                yield from self._extract_tuple(it, tail)
+            elif isinstance(head, List):
+                for item in it:
+                    yield from self._extract(item, tail)
+            else:
+                assert False
+
+    def _extract_dict(self, it, path):
+        """
+        Subroutine of :meth:`_extract` for extracting either the key or value
+        from the dicts in *it*.
+        """
+        if path:
+            # values
+            head, *tail = path
+            if isinstance(head, (List, Dict)):
+                assert False, "invalid key type"
+            elif isinstance(head, Choice):
+                try:
+                    yield from self._extract(
+                        it[head.value], tail)
+                except KeyError:
+                    assert head.optional, "mandatory key missing"
+            elif isinstance(head, Tuple) and head.pattern is None:
+                # Incomplete tuple pattern indicates we're extracting tuples
+                # from the key(s) of the dict
+                for key in it:
+                    yield from self._extract(key, [head] + tail)
+            else:
+                for key, value in it.items():
+                    if head.validate(key):
+                        yield from self._extract(value, tail)
+                    else:
+                        warnings.warn(ValidationWarning(
+                            "failed to validate {key} against {head!r}"
+                            .format(key=key, head=head)))
+        else:
+            # keys
+            yield from it
+
+    def _extract_tuple(self, it, path):
+        """
+        Subroutine of :meth:`_extract` for extracting either the field
+        descriptions tuples (index, name) or the values from the tuples in
+        *it*.
+        """
+        if path:
+            # values
+            head, *tail = path
+            if not isinstance(head, (Int, Str, Choice)):
+                assert False, "invalid column index type"
+            elif isinstance(head, Choice):
+                if isinstance(head.value, int):
+                    get_value = lambda: it[head.value]
+                else:
+                    get_value = lambda: getattr(it, head.value)
+                try:
+                    yield from self._extract(get_value(), tail)
+                except (IndexError, AttributeError):
+                    assert head.optional, "mandatory field missing"
+            else:
+                try:
+                    field_it = zip(it._fields, it)
+                except AttributeError:
+                    field_it = enumerate(it)
+                for field, value in field_it:
+                    if head.validate(field):
+                        yield from self._extract(value, tail)
+                    else:
+                        warnings.warn(ValidationWarning(
+                            "failed to validate field {field} against {head!r}"
+                            .format(field=field, head=head)))
+        else:
+            # "fields" (tuple of index, name)
+            try:
+                yield from (
+                    TupleField(index, name)
+                    for index, name in enumerate(it._fields)
+                )
+            except AttributeError:
+                yield from (TupleField(index) for index in range(len(it)))
+
+    def _match(self, items, *, threshold=None, parent_card=None):
+        """
+        Find a pattern which matches all (or most) of *items*, an iterable of
+        objects found at a particular layer of the hierarchy.
+        """
+        if threshold is None:
+            threshold = self.choice_threshold
+        items = list(items)
+        if not items:
+            return Empty()
+        elif all(
+                isinstance(item, tuple) and not isinstance(item, TupleField)
+                for item in items
+        ):
+            return Tuple(items)
+        elif all(isinstance(item, list) for item in items):
+            # If all sub-lists are the same length, and that length is less
+            # than the key-threshold we may be dealing with an input from a
+            # language that doesn't support tuples (e.g. JS)
+            if (
+                    len(items[0]) < threshold and
+                    all(len(item) == len(items[0]) for item in items)
+            ):
+                return Tuple(items)
+            else:
+                return List(items)
+        elif all(isinstance(item, dict) for item in items):
+            return Dict(items)
+        else:
+
+            try:
+                card = Counter(items)
+            except TypeError:
+                return Value()
+            else:
+                max_card = max(card.values())
+                unique = max_card == 1
+                if len(card) < threshold:
+                    return Choices(
+                        Choice(key, optional=count < parent_card)
+                        for key, count in card.items()
+                    )
+                elif all(isinstance(value, TupleField) for value in card):
+                    # If the number of tuple-fields exceeds the choice
+                    # threshold, just treat the index (or name) as general data
+                    if all(value.name is not None for value in card):
+                        card = Counter(value.name for value in card)
+                    else:
+                        card = Counter(value.index for value in card)
+
+                # The following ordering is important; note that bool's domain
+                # is a subset of int's
+                if all(isinstance(value, bool) for value in card):
+                    return Bool(card)
+                elif all(isinstance(value, int) for value in card):
+                    return self._match_possible_datetime(
+                        Int(card, unique=unique))
+                elif all(isinstance(value, (int, float)) for value in card):
+                    return self._match_possible_datetime(
+                        Float(card, unique=unique))
+                elif all(isinstance(value, datetime) for value in card):
+                    return DateTime(card, unique=unique)
+                elif all(isinstance(value, str) for value in card):
+                    if self.strip_whitespace:
+                        strip_card = Counter()
+                        for s, count in card.items():
+                            strip_card[s.strip()] += count
+                        card = strip_card
+                    return self._match_str(card, unique=unique)
+                else:
+                    return Value()
+
+    def _match_str(self, items, *, unique=False):
+        """
+        Given a :class:`~collections.Counter` of strings in *items*, find any
+        common fixed-length patterns or string-encoded ints, floats, and a
+        variety of date-time formats in a majority of the entries (no more
+        than :attr:`bad_threshold` percent invalid conversions), provided the
+        maximum string length is below :attr:`max_numeric_len`.
+        """
+        total = sum(items.values())
+        if '' in items:
+            if items[''] / total > self.empty_threshold:
+                return Str(items.keys())
+            del items['']
+        bad_threshold = ceil(total * self.bad_threshold)
+        if unique or bad_threshold == 0:
+            sample = items
+        else:
+            min_coverage = total - bad_threshold
+            coverage = 0
+            sample = Counter()
+            for item, count in items.most_common():
+                sample[item] = count
+                coverage += count
+                if coverage >= min_coverage:
+                    # We've excluded potentially bad values based on
+                    # popularity
+                    bad_threshold = 0
+                    break
+                elif count == 1:
+                    # Too many unique values to determine which should be
+                    # ignored by popularity; just use regular bad_threshold
+                    sample = items
+                    break
+
+        stats = Stats.from_lengths(sample)
+        if stats.max <= self.max_numeric_len:
+            result = self._match_numeric_str(sample, unique=unique,
+                                             bad_threshold=bad_threshold)
+            if result is not None:
+                return self._match_possible_datetime(result)
+        if stats.min == stats.max:
+            return self._match_fixed_len_str(sample, unique=unique,
+                                             bad_threshold=bad_threshold)
+        # XXX Add is_base64 (and others?)
+        if all(value.startswith(('http://', 'https://')) for value in sample):
+            # XXX Refine this to parse URLs
+            return URL(unique=unique)
+        else:
+            return Str(sample, unique=unique)
 
     def _match_fixed_len_str(self, items, *, unique=False, bad_threshold=0):
         """
@@ -177,180 +481,3 @@ class Analyzer:
             return DateTime.from_numbers(pattern)
         else:
             return pattern
-
-    def _match_str(self, items, *, unique=False):
-        """
-        Given a :class:`~collections.Counter` of strings in *items*, find any
-        common fixed-length patterns or string-encoded ints, floats, and a
-        variety of date-time formats in a majority of the entries (no more
-        than :attr:`bad_threshold` percent invalid conversions), provided the
-        maximum string length is below :attr:`max_numeric_len`.
-        """
-        total = sum(items.values())
-        if '' in items:
-            if items[''] / total > self.empty_threshold:
-                return Str(items.keys())
-            del items['']
-        bad_threshold = ceil(total * self.bad_threshold)
-        if unique or bad_threshold == 0:
-            sample = items
-        else:
-            min_coverage = total - bad_threshold
-            coverage = 0
-            sample = Counter()
-            for item, count in items.most_common():
-                sample[item] = count
-                coverage += count
-                if coverage >= min_coverage:
-                    # We've excluded potentially bad values based on
-                    # popularity
-                    bad_threshold = 0
-                    break
-                elif count == 1:
-                    # Too many unique values to determine which should be
-                    # ignored by popularity; just use regular bad_threshold
-                    sample = items
-                    break
-
-        stats = Stats.from_lengths(sample)
-        if stats.max <= self.max_numeric_len:
-            result = self._match_numeric_str(sample, unique=unique,
-                                             bad_threshold=bad_threshold)
-            if result is not None:
-                return self._match_possible_datetime(result)
-        if stats.min == stats.max:
-            return self._match_fixed_len_str(sample, unique=unique,
-                                             bad_threshold=bad_threshold)
-        # XXX Add is_base64 (and others?)
-        if all(value.startswith(('http://', 'https://')) for value in sample):
-            # XXX Refine this to parse URLs
-            return URL(unique=unique)
-        else:
-            return Str(sample, unique=unique)
-
-    def _match(self, items, *, threshold=None, parent_card=None):
-        """
-        Find a pattern which matches all (or most) of *items*, an iterable of
-        objects found at a particular layer of the hierarchy.
-        """
-        if threshold is None:
-            threshold = self.choice_threshold
-        items = list(items)
-        if not items:
-            return Empty()
-        elif all(isinstance(item, list) for item in items):
-            return List(items)
-        elif all(isinstance(item, dict) for item in items):
-            return Dict(items)
-        else:
-            try:
-                card = Counter(items)
-            except TypeError:
-                return Value()
-            else:
-                max_card = max(card.values())
-                unique = max_card == 1
-                if len(card) < threshold:
-                    return Choices(
-                        Choice(key, optional=count < parent_card)
-                        for key, count in card.items()
-                    )
-                elif all(isinstance(value, bool) for value in card):
-                    return Bool(card)
-                elif all(isinstance(value, int) for value in card):
-                    return self._match_possible_datetime(
-                        Int(card, unique=unique))
-                elif all(isinstance(value, float) for value in card):
-                    return self._match_possible_datetime(
-                        Float(card, unique=unique))
-                elif all(isinstance(value, datetime) for value in card):
-                    return DateTime(card, unique=unique)
-                elif all(isinstance(value, str) for value in card):
-                    if self.strip_whitespace:
-                        strip_card = Counter()
-                        for s, count in card.items():
-                            strip_card[s.strip()] += count
-                        card = strip_card
-                    return self._match_str(card, unique=unique)
-                else:
-                    return Value()
-
-    def _extract(self, it, path):
-        """
-        Extract all entries from *it* (a potentially nested iterable which is
-        the top-level object passed to :func:`analyze`), at the level dictated
-        by *path*, a sequence of pattern-matching objects.
-        """
-        if not path:
-            yield it
-        else:
-            head, *tail = path
-            if isinstance(head, Dict):
-                if tail:
-                    # values
-                    key_pattern, *tail = tail
-                    if isinstance(key_pattern, (List, Dict)):
-                        assert False, "invalid key type"
-                    elif isinstance(key_pattern, Choice):
-                        try:
-                            yield from self._extract(
-                                it[key_pattern.value], tail)
-                        except KeyError:
-                            assert key_pattern.optional
-                    else:
-                        for key, value in it.items():
-                            if key_pattern.validate(key):
-                                yield from self._extract(value, tail)
-                            else:
-                                warnings.warn(ValidationWarning(
-                                    "failed to validate {key} against "
-                                    "{key_pattern!r}".format(
-                                        key=key, key_pattern=key_pattern)))
-                else:
-                    # keys
-                    yield from it
-            elif isinstance(head, List):
-                for item in it:
-                    yield from self._extract(item, tail)
-            else:
-                assert False
-
-    def _analyze(self, it, path, *, threshold=None, card=1):
-        """
-        Recursively analyze the structure of *it* at the nodes described by
-        *path*. The parent cardinality is tracked in *card* (for the purposes
-        of determining optional choices).
-        """
-        pattern = self._match(self._extract(it, path),
-                              threshold=threshold, parent_card=card)
-        if isinstance(pattern, Dict):
-            key_pattern = self._analyze(
-                it, path + (pattern,),
-                threshold=self.key_threshold,
-                card=pattern.stats.card)
-            if isinstance(key_pattern, Choices):
-                return pattern._replace(pattern={
-                    choice: self._analyze(
-                        it, path + (pattern, choice),
-                        card=pattern.stats.card)
-                    for choice in key_pattern
-                })
-            else:
-                return pattern._replace(pattern={
-                    key_pattern: self._analyze(
-                        it, path + (pattern, key_pattern),
-                        card=pattern.stats.card)
-                })
-        elif isinstance(pattern, List):
-            item_pattern = self._analyze(
-                it, path + (pattern,), card=pattern.stats.card)
-            return pattern._replace(pattern=[item_pattern])
-        else:
-            return pattern
-
-    def analyze(self, it):
-        """
-        Given some value *it* (typically an iterable or mapping), return a
-        description of its structure.
-        """
-        return self._analyze(it, ())

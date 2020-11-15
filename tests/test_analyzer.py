@@ -45,6 +45,12 @@ def test_analyze_list():
         sample=[data], pattern=[Int(sample=data, unique=True)])
 
 
+def test_analyze_tuple():
+    data = tuple(range(100))
+    assert Analyzer().analyze(data) == Tuple(
+        sample=[data], pattern=(Int(sample=data, unique=True),))
+
+
 def test_analyze_dict():
     data = {chr(ord('A') + n): n for n in range(10)}
     assert Analyzer().analyze(data) == Dict(
