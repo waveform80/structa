@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from functools import partial
 from fractions import Fraction
 from collections import Counter, namedtuple
-from operator import itemgetter, attrgetter
+from operator import attrgetter
+from itertools import groupby
 
 from dateutil.relativedelta import relativedelta
 
@@ -147,23 +148,36 @@ class Analyzer:
             threshold=self.key_threshold,
             card=pattern.stats.card)
         if isinstance(fields, Choices):
-            # XXX: What about fields that move index? e.g. consider a data-set
-            # with optional fields; fields after the optional ones will change
-            # index. Considerably more intelligence could likely be applied
-            # here...
-            if all(choice.value.name is not None for choice in fields):
-                field_def = attrgetter('name')
+            if all(choice.value.name for choice in fields):
+                # Only used namedtuples if absolutely every single tuple in the
+                # extracted sample has names for every column; otherwise just
+                # index by field number
+                names = {
+                    name: sorted(group, key=attrgetter('value.index'))
+                    for name, group in groupby(
+                        sorted(fields, key=attrgetter('value.name')),
+                        key=attrgetter('value.name')
+                    )
+                }
+                fields = tuple(
+                    Choice(group[0].value.name,
+                           any(field.optional for field in group))
+                    for group in sorted(names.values(), key=lambda g: tuple(
+                        field.value.index for field in g))
+                )
             else:
-                field_def = attrgetter('index')
-            fields = tuple(
-                Choice(field_def(choice.value), choice.optional)
-                for choice in sorted(fields, key=attrgetter('value'))
-            )
+                fields = tuple(
+                    Choice(index, any(field.optional for field in group))
+                    for index, group in groupby(
+                        sorted(fields, key=attrgetter('value.index')),
+                        key=attrgetter('value.index')
+                    )
+                )
             return pattern._replace(fields=fields, pattern=tuple(
                 self._analyze(
-                    it, path + (pattern, choice),
+                    it, path + (pattern, field),
                     card=pattern.stats.card)
-                for choice in fields
+                for field in fields
             ))
         else:
             return pattern._replace(fields=(fields,), pattern=(
@@ -234,7 +248,7 @@ class Analyzer:
         if path:
             # values
             head, *tail = path
-            if not isinstance(head, (Int, Str, Choice)):
+            if not isinstance(head, (Empty, Int, Str, Choice)):
                 assert False, "invalid column index type"
             elif isinstance(head, Choice):
                 if isinstance(head.value, int):
@@ -254,6 +268,7 @@ class Analyzer:
                     if head.validate(field):
                         yield from self._extract(value, tail)
                     else:
+                        # XXX Can this ever get triggered?
                         warnings.warn(ValidationWarning(
                             "failed to validate field {field} against {head!r}"
                             .format(field=field, head=head)))
@@ -283,11 +298,14 @@ class Analyzer:
         ):
             return Tuple(items)
         elif all(isinstance(item, list) for item in items):
-            # If all sub-lists are the same length, and that length is less
-            # than the key-threshold we may be dealing with an input from a
-            # language that doesn't support tuples (e.g. JS)
+            # If this is a list of lists, all sub-lists are the same length and
+            # non-empty, the outer list is longer than the sub-list length, and
+            # the sub-list length is less than the field-threshold we are
+            # probably dealing with a table-like input from a language that
+            # doesn't support tuples (e.g. JS)
             if (
-                    len(items[0]) < threshold and
+                    len(items) > len(items[0]) and
+                    0 < len(items[0]) < threshold and
                     all(len(item) == len(items[0]) for item in items)
             ):
                 return Tuple(items)
@@ -312,7 +330,7 @@ class Analyzer:
                 elif all(isinstance(value, TupleField) for value in card):
                     # If the number of tuple-fields exceeds the choice
                     # threshold, just treat the index (or name) as general data
-                    if all(value.name is not None for value in card):
+                    if all(value.name for value in card):
                         card = Counter(value.name for value in card)
                     else:
                         card = Counter(value.index for value in card)

@@ -1,4 +1,5 @@
 import datetime as dt
+from collections import namedtuple
 
 import pytest
 
@@ -65,11 +66,13 @@ def test_dict_with_pattern():
         {'a': 1},
         {'a': 1, 'b': 2},
     ]
-    pattern = Dict(data, pattern={
-        Str({'a', 'b'}, pattern=(AnyChar,)): Int({1, 2})
-    })
+    defs = {
+        Str({'a', 'b'}, pattern=(AnyChar,)): Int({1, 2}),
+    }
+    pattern = Dict(data, fields=defs.keys(), pattern=tuple(defs.values()))
     assert pattern.stats.min == 0
     assert pattern.stats.max == 2
+    assert pattern.fields is not None
     assert pattern.pattern is not None
     assert str(pattern) == '{str pattern=.: int range=1..2}'
 
@@ -81,11 +84,12 @@ def test_dict_with_long_pattern():
         {'num': 3, 'label': 'baz'},
         {'num': 4, 'label': 'quux', 'active': 'f'},
     ]
-    pattern = Dict(data, pattern={
+    defs = {
         Choice('num', optional=False): Int({1, 2, 3, 4}),
         Choice('label', optional=False): Str({'foo', 'bar', 'baz', 'quux'}, pattern=None),
         Choice('active', optional=True): StrRepr(Bool({False, True}), pattern="'f'|'t'"),
-    })
+    }
+    pattern = Dict(data, fields=defs.keys(), pattern=tuple(defs.values()))
     assert pattern.stats.min == 2
     assert pattern.stats.max == 3
     assert pattern.pattern is not None
@@ -95,6 +99,75 @@ def test_dict_with_long_pattern():
     'label': str,
     'active'*: str of bool format='f'|'t'
 }"""
+
+
+def test_tuple():
+    data = [
+        (),
+        (1,),
+        (1, 2, 3),
+    ]
+    pattern = Tuple(data)
+    assert pattern.stats.min == 0
+    assert pattern.stats.max == 3
+    assert pattern.fields is None
+    assert pattern.pattern is None
+    assert str(pattern) == '()'
+    assert pattern.validate(())
+    assert not pattern.validate('foo')
+
+
+def test_tuple_with_pattern():
+    data = [
+        ('foo', 1),
+        ('bar', 2),
+        ('baz', 3),
+    ]
+    defs = {
+        Choice(0, False): Str(['foo', 'bar', 'baz'], pattern=(AnyChar, AnyChar, AnyChar)),
+        Choice(1, False): Int([1, 2, 3]),
+    }
+    pattern = Tuple(
+        data,
+        fields=tuple(defs.keys()),
+        pattern=tuple(defs.values())
+    )
+    assert pattern.stats.min == 2
+    assert pattern.stats.max == 2
+    assert pattern.fields is not None
+    assert pattern.pattern is not None
+    assert str(pattern) == '(str pattern=..., int range=1..3)'
+
+
+def test_tuple_with_long_pattern():
+    book = namedtuple('book', ('author', 'title', 'published'))
+    data = [
+        book('J. R. R. Tolkien', 'The Fellowship of the Ring', '1954-07-29'),
+        book('J. R. R. Tolkien', 'The Two Towers', '1954-11-11'),
+        book('J. R. R. Tolkien', 'The Return of the King', '1955-10-20'),
+    ]
+    defs = {
+        Choice('author', False): Str([t[0] for t in data], pattern=tuple('J. R. R. Tolkien')),
+        Choice('title', False): Str([t[1] for t in data], pattern=None),
+        Choice('published', False): StrRepr(
+            DateTime([dt.datetime.strptime(t[2], '%Y-%m-%d') for t in data], unique=True),
+            pattern='%Y-%m-%d'
+        )
+    }
+    pattern = List([data], pattern=[
+        Tuple(data, fields=tuple(defs.keys()), pattern=tuple(defs.values()))
+    ])
+    assert pattern.stats.min == pattern.stats.max == 3
+    assert pattern.pattern[0].fields is not None
+    assert pattern.pattern[0].pattern is not None
+    assert str(pattern) == """\
+[
+    (
+        author=str pattern=J. R. R. Tolkien,
+        title=str,
+        published=str of datetime range=1954-07-29 00:00:00..1955-10-20 00:00:00 format=%Y-%m-%d
+    )
+]"""
 
 
 def test_list():
@@ -134,12 +207,13 @@ def test_list_with_long_pattern():
             {'num': 4, 'label': 'quux', 'active': 'f'},
         ]
     ]
+    defs = {
+        Choice('num', optional=False): Int({1, 2, 3, 4}),
+        Choice('label', optional=False): Str({'foo', 'bar', 'baz', 'quux'}, pattern=None),
+        Choice('active', optional=True): StrRepr(Bool({False, True}), pattern="f|t"),
+    }
     pattern = List(data, pattern=[
-        Dict(data[0], pattern={
-            Choice('num', optional=False): Int({1, 2, 3, 4}),
-            Choice('label', optional=False): Str({'foo', 'bar', 'baz', 'quux'}, pattern=None),
-            Choice('active', optional=True): StrRepr(Bool({False, True}), pattern="f|t"),
-        })
+        Dict(data[0], fields=defs.keys(), pattern=tuple(defs.values()))
     ])
     assert pattern.stats.min == pattern.stats.max == 4
     assert pattern.pattern is not None
@@ -315,14 +389,20 @@ def test_choices():
 def test_value():
     pattern = Value()
     assert str(pattern) == 'value'
+    assert repr(pattern) == 'Value()'
     assert pattern.validate(None)
     assert pattern.validate(1)
     assert pattern.validate('foo')
+    assert Value() == Value()
+    assert Value() != Empty()
 
 
 def test_empty():
     pattern = Empty()
     assert str(pattern) == ''
+    assert repr(pattern) == 'Empty()'
     assert not pattern.validate(None)
     assert not pattern.validate(1)
     assert not pattern.validate('foo')
+    assert Empty() == Empty()
+    assert Empty() != Value()

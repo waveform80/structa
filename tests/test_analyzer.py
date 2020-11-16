@@ -46,36 +46,91 @@ def test_analyze_list():
 
 
 def test_analyze_tuple():
+    data = tuple(range(10))
+    defs = {
+        Choice(i, False): Choices({Choice(i, False)})
+        for i in range(10)
+    }
+    assert Analyzer().analyze(data) == Tuple(
+        sample=[data],
+        fields=tuple(defs.keys()),
+        pattern=tuple(defs.values())
+    )
     data = tuple(range(100))
     assert Analyzer().analyze(data) == Tuple(
-        sample=[data], pattern=(Int(sample=data, unique=True),))
+        sample=[data],
+        fields=(Int(sample=range(100), unique=True),),
+        pattern=(Int(sample=data, unique=True),))
+
+
+def test_analyze_namedtuple():
+    book = namedtuple('book', ('author', 'title', 'published'))
+    data = [
+        book('J. R. R. Tolkien', 'The Hobbit', '1937-09-21'),
+        book('J. R. R. Tolkien', 'The Fellowship of the Ring', '1954-07-29'),
+        book('J. R. R. Tolkien', 'The Two Towers', '1954-11-11'),
+        book('J. R. R. Tolkien', 'The Return of the King', '1955-10-20'),
+        book('J. R. R. Tolkien', 'The Adventures of Tom Bombadil', '1962-11-22'),
+    ]
+    defs = (
+        (Choice('author', False), Choices({Choice('J. R. R. Tolkien', False)})),
+        (Choice('title', False), Str([b.title for b in data], pattern=None, unique=True)),
+        (Choice('published', False), StrRepr(
+            DateTime([dt.datetime.strptime(b.published, '%Y-%m-%d') for b in data], unique=True),
+            pattern='%Y-%m-%d'
+        ))
+    )
+    assert Analyzer(choice_threshold=4).analyze(data) == List(
+        sample=[data],
+        pattern=[Tuple(
+            sample=data,
+            fields=tuple(i[0] for i in defs),
+            pattern=tuple(i[1] for i in defs),
+        )]
+    )
+
+
+def test_analyze_namedtuple_wide():
+    t = namedtuple('t', tuple('field{:02d}'.format(i) for i in range(50)))
+    data = t(*range(50))
+    assert Analyzer().analyze(data) == Tuple(
+        sample=[data],
+        fields=(Str(sample=t._fields, unique=True,
+                    pattern=tuple('field') + (DecDigit, DecDigit)),),
+        pattern=(Int(sample=data, unique=True),))
 
 
 def test_analyze_dict():
     data = {chr(ord('A') + n): n for n in range(10)}
+    fields = Choices(Choice(i, False) for i in data)
     assert Analyzer().analyze(data) == Dict(
-        sample=[data], pattern={
-            Choice(value=key, optional=False):
-            Choices({Choice(value=value, optional=False)})
-            for key, value in data.items()
-        })
+        sample=[data],
+        fields=fields,
+        pattern=tuple(
+            Choices({Choice(data[field.value], False)})
+            for field in fields
+        )
+    )
     data = {chr(ord('A') + n): n for n in range(50)}
     assert Analyzer(bad_threshold=0).analyze(data) == Dict(
-        sample=[data], pattern={
-            Str(sample=data.keys(), pattern=(AnyChar,), unique=True):
-            Int(sample=data.values(), unique=True)
-        })
+        sample=[data],
+        fields={Str(sample=data.keys(), pattern=(AnyChar,), unique=True)},
+        pattern=(Int(sample=data.values(), unique=True),)
+    )
 
 
 def test_analyze_dict_optional_chocies():
     data = [{'foo': 1, 'bar': 2}] * 999
     data.append({'foo': 1})
+    fields = Choices(Choice(s, optional=(s == 'bar')) for s in data[0])
     assert Analyzer(bad_threshold=2/100).analyze(data) == List(
         sample=[data], pattern=[Dict(
-            sample=data, pattern={
-                Choice('bar', optional=True): Choices({Choice(2, optional=True)}),
-                Choice('foo', optional=False): Choices({Choice(1, optional=False)}),
-            }
+            sample=data,
+            fields=fields,
+            pattern=tuple(
+                Choices({Choice(data[0][field.value], field.optional)})
+                for field in fields
+            )
         )]
     )
 
@@ -86,26 +141,147 @@ def test_analyze_dict_invalid_choices():
     with pytest.warns(ValidationWarning):
         assert Analyzer(bad_threshold=1/100).analyze(data) == List(
             sample=[data], pattern=[Dict(
-                sample=data, pattern={
-                    Str(sample=[k for d in data[:-1] for k in d],
-                        pattern=(AnyChar,), unique=False):
-                    Int(sample=[v for d in data[:-1] for v in d.values()], unique=False)
-                }
+                sample=data,
+                fields={Str(sample=[k for d in data[:-1] for k in d],
+                            pattern=(AnyChar,), unique=False)},
+                pattern=(Int(sample=[v for d in data[:-1] for v in d.values()],
+                             unique=False),)
             )]
         )
 
 
 def test_analyze_dict_of_dicts():
     data = {n: {'foo': n, 'bar': n} for n in range(99)}
+    fields = Choices(Choice(s, False) for s in data[0])
     assert Analyzer().analyze(data) == Dict(
-        sample=[data], pattern={
-            Int(sample=data.keys(), unique=True): Dict(
-                sample=data.values(), pattern={
-                    Choice('foo', optional=False): Int(sample=range(99), unique=True),
-                    Choice('bar', optional=False): Int(sample=range(99), unique=True),
-                }
+        sample=[data],
+        fields={Int(sample=data.keys(), unique=True)},
+        pattern=(
+            Dict(
+                sample=data.values(),
+                fields=fields,
+                pattern=(
+                    Int(sample=range(99), unique=True),
+                    Int(sample=range(99), unique=True),
+                )
+            ),
+        )
+    )
+
+
+def test_analyze_dict_keyed_by_tuple():
+    data = {
+        (n, n + 1): n + 2
+        for n in range(50)
+    }
+    defs = {
+        Choice(0, False): Int(range(50), unique=True),
+        Choice(1, False): Int(range(1, 51), unique=True),
+    }
+    assert Analyzer().analyze(data) == Dict(
+        sample=[data],
+        fields={Tuple(
+            sample=list(data.keys()),
+            fields=tuple(defs.keys()),
+            pattern=tuple(defs.values()),
+        )},
+        pattern=(Int(range(2, 52), unique=True),)
+    )
+
+
+def test_analyze_tuple_optional_fields():
+    data = [
+        (n, n + 1)
+        for n in range(100)
+    ]
+    data.append((100,))
+    assert Analyzer().analyze(data) == List(
+        sample=[data],
+        pattern=[Tuple(
+            sample=data,
+            fields=(
+                Choice(0, False),
+                Choice(1, True),
+            ),
+            pattern=(
+                Int(sample=range(101), unique=True),
+                Int(sample=range(1, 101), unique=True),
             )
-        }
+        )]
+    )
+
+
+def test_analyze_namedtuples_optional_fields():
+    t1 = namedtuple('t1', 'a b c')
+    t2 = namedtuple('t2', 'a b')
+    data = [
+        t1(n, n + 1, n + 2)
+        for n in range(100)
+    ]
+    data.append(t2(100, 101))
+    assert Analyzer().analyze(data) == List(
+        sample=[data],
+        pattern=[Tuple(
+            sample=data,
+            fields=(
+                Choice('a', False),
+                Choice('b', False),
+                Choice('c', True),
+            ),
+            pattern=(
+                Int(sample=range(101), unique=True),
+                Int(sample=range(1, 102), unique=True),
+                Int(sample=range(2, 102), unique=True),
+            )
+        )]
+    )
+
+
+def test_analyze_tuple_and_namedtuple():
+    t = namedtuple('t1', 'a b c')
+    data = [
+        t(n, n + 1, n + 2)
+        for n in range(100)
+    ]
+    data.append((100, 101, 102))
+    assert Analyzer().analyze(data) == List(
+        sample=[data],
+        pattern=[Tuple(
+            sample=data,
+            fields=(
+                Choice(0, True),
+                Choice(1, True),
+                Choice(2, True),
+            ),
+            pattern=(
+                Int(sample=range(101), unique=True),
+                Int(sample=range(1, 102), unique=True),
+                Int(sample=range(2, 103), unique=True),
+            )
+        )]
+    )
+
+
+def test_analyze_lists_as_tuples():
+    data = [
+        [n, n + 1, n + 2]
+        for n in range(100)
+    ]
+    assert Analyzer().analyze(data) == List(
+        sample=[data],
+        pattern=[Tuple(
+            sample=data,
+            fields=(
+                Choice(0, False),
+                Choice(1, False),
+                Choice(2, False),
+            ),
+            pattern=(
+                Int(sample=range(100), unique=True),
+                Int(sample=range(1, 101), unique=True),
+                Int(sample=range(2, 102), unique=True),
+            )
+        )]
     )
 
 

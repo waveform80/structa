@@ -141,7 +141,11 @@ class Tuple(namedtuple('Tuple', ('stats', 'fields', 'pattern'))):
             return '()'
         else:
             elems = [
-                ('{field}={value}' if isinstance(field, str) else '{value}'
+                (
+                    '{field.value}={value}'
+                    if isinstance(field, Choice)
+                    and isinstance(field.value, str) else
+                    '{value}'
                 ).format(field=field, value=value)
                 for field, value in zip(self.fields, self.pattern)
             ]
@@ -159,7 +163,7 @@ class Tuple(namedtuple('Tuple', ('stats', 'fields', 'pattern'))):
 class TupleField(namedtuple('TupleField', ('index', 'name'))):
     __slots__ = ()
 
-    def __new__(cls, index, name=None):
+    def __new__(cls, index, name=''):
         return super().__new__(cls, index, name)
 
 
@@ -467,14 +471,17 @@ class Choice(namedtuple('Choice', ('value', 'optional'))):
 class Value:
     __slots__ = ()
 
+    def __eq__(self, other):
+        return isinstance(other, Value)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     def __str__(self):
         return 'value'
 
     def __repr__(self):
         return 'Value()'
-
-    def __call__(self):
-        return self
 
     def validate(self, value):
         return True
@@ -483,19 +490,17 @@ class Value:
 class Empty:
     __slots__ = ()
 
+    def __eq__(self, other):
+        return isinstance(other, Empty)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     def __str__(self):
         return ''
 
     def __repr__(self):
         return 'Empty()'
 
-    def __call__(self):
-        return self
-
     def validate(self, value):
         return False
-
-
-# Singletons
-Value = Value()
-Empty = Empty()
