@@ -73,12 +73,12 @@ class ValidationWarning(Warning):
 class Analyzer:
     def __init__(self, *, bad_threshold=Fraction(2, 100),
                  empty_threshold=Fraction(98, 100), choice_threshold=20,
-                 key_threshold=20, max_numeric_len=32, strip_whitespace=False,
+                 field_threshold=20, max_numeric_len=30, strip_whitespace=False,
                  min_timestamp=None, max_timestamp=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.choice_threshold = choice_threshold
-        self.key_threshold = key_threshold
+        self.field_threshold = field_threshold
         self.max_numeric_len = max_numeric_len
         self.strip_whitespace = strip_whitespace
         now = datetime.now()
@@ -121,7 +121,7 @@ class Analyzer:
     def _analyze_dict(self, it, path, pattern):
         fields = self._analyze(
             it, path + (pattern,),
-            threshold=self.key_threshold,
+            threshold=self.field_threshold,
             card=pattern.stats.card)
         if isinstance(fields, Choices):
             # XXX: This relies on the assumption that the iteration order
@@ -145,7 +145,7 @@ class Analyzer:
         # them as a tuple (possibly named) of item patterns
         fields = self._analyze(
             it, path + (pattern,),
-            threshold=self.key_threshold,
+            threshold=self.field_threshold,
             card=pattern.stats.card)
         if isinstance(fields, Choices):
             if all(choice.value.name for choice in fields):
