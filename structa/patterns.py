@@ -10,7 +10,10 @@ from .chars import Digit, AnyChar
 
 class FrozenCounter(Mapping):
     def __init__(self, it):
-        self._counter = Counter(it)
+        if isinstance(it, Counter):
+            self._counter = it.copy()
+        else:
+            self._counter = Counter(it)
         self._hash = None
 
     @classmethod
