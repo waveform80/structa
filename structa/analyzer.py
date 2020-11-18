@@ -23,7 +23,7 @@ from .patterns import (
     List,
     Tuple,
     TupleField,
-    Stats,
+    ScalarStats,
     Str,
     URL,
     Value,
@@ -113,7 +113,7 @@ class Analyzer:
             # Lists are expected to be homogeneous, therefore there's a single
             # item pattern
             item_pattern = self._analyze(
-                it, path + (pattern,), card=pattern.stats.card)
+                it, path + (pattern,), card=pattern.lengths.card)
             return pattern._replace(pattern=[item_pattern])
         else:
             return pattern
@@ -122,7 +122,7 @@ class Analyzer:
         fields = self._analyze(
             it, path + (pattern,),
             threshold=self.field_threshold,
-            card=pattern.stats.card)
+            card=pattern.lengths.card)
         if isinstance(fields, Choices):
             # XXX: This relies on the assumption that the iteration order
             # of sets (or frozensets) is stable; for further discussion:
@@ -130,14 +130,14 @@ class Analyzer:
             return pattern._replace(fields=fields, pattern=tuple(
                 self._analyze(
                     it, path + (pattern, choice),
-                    card=pattern.stats.card)
+                    card=pattern.lengths.card)
                 for choice in fields
             ))
         else:
             return pattern._replace(fields={fields}, pattern=(
                 self._analyze(
                     it, path + (pattern, fields),
-                    card=pattern.stats.card),
+                    card=pattern.lengths.card),
             ))
 
     def _analyze_tuple(self, it, path, pattern):
@@ -146,7 +146,7 @@ class Analyzer:
         fields = self._analyze(
             it, path + (pattern,),
             threshold=self.field_threshold,
-            card=pattern.stats.card)
+            card=pattern.lengths.card)
         if isinstance(fields, Choices):
             if all(choice.value.name for choice in fields):
                 # Only used namedtuples if absolutely every single tuple in the
@@ -176,14 +176,14 @@ class Analyzer:
             return pattern._replace(fields=fields, pattern=tuple(
                 self._analyze(
                     it, path + (pattern, field),
-                    card=pattern.stats.card)
+                    card=pattern.lengths.card)
                 for field in fields
             ))
         else:
             return pattern._replace(fields=(fields,), pattern=(
                 self._analyze(
                     it, path + (pattern, fields),
-                    card=pattern.stats.card),
+                    card=pattern.lengths.card),
             ))
 
     def _extract(self, it, path):
@@ -316,48 +316,45 @@ class Analyzer:
         else:
 
             try:
-                card = Counter(items)
+                sample = Counter(items)
             except TypeError:
                 return Value()
             else:
-                max_card = max(card.values())
-                unique = max_card == 1
-                if len(card) < threshold:
+                max_card = max(sample.values())
+                if len(sample) < threshold:
                     return Choices(
                         Choice(key, optional=count < parent_card)
-                        for key, count in card.items()
+                        for key, count in sample.items()
                     )
-                elif all(isinstance(value, TupleField) for value in card):
+                elif all(isinstance(value, TupleField) for value in sample):
                     # If the number of tuple-fields exceeds the choice
                     # threshold, just treat the index (or name) as general data
-                    if all(value.name for value in card):
-                        card = Counter(value.name for value in card)
+                    if all(value.name for value in sample):
+                        sample = Counter(value.name for value in sample)
                     else:
-                        card = Counter(value.index for value in card)
+                        sample = Counter(value.index for value in sample)
 
                 # The following ordering is important; note that bool's domain
                 # is a subset of int's
-                if all(isinstance(value, bool) for value in card):
-                    return Bool(card)
-                elif all(isinstance(value, int) for value in card):
-                    return self._match_possible_datetime(
-                        Int(card, unique=unique))
-                elif all(isinstance(value, (int, float)) for value in card):
-                    return self._match_possible_datetime(
-                        Float(card, unique=unique))
-                elif all(isinstance(value, datetime) for value in card):
-                    return DateTime(card, unique=unique)
-                elif all(isinstance(value, str) for value in card):
+                if all(isinstance(value, bool) for value in sample):
+                    return Bool(sample)
+                elif all(isinstance(value, int) for value in sample):
+                    return self._match_possible_datetime(Int(sample))
+                elif all(isinstance(value, (int, float)) for value in sample):
+                    return self._match_possible_datetime(Float(sample))
+                elif all(isinstance(value, datetime) for value in sample):
+                    return DateTime(sample)
+                elif all(isinstance(value, str) for value in sample):
                     if self.strip_whitespace:
-                        strip_card = Counter()
-                        for s, count in card.items():
-                            strip_card[s.strip()] += count
-                        card = strip_card
-                    return self._match_str(card, unique=unique)
+                        stripped_sample = Counter()
+                        for s, count in sample.items():
+                            stripped_sample[s.strip()] += count
+                        sample = stripped_sample
+                    return self._match_str(sample)
                 else:
                     return Value()
 
-    def _match_str(self, items, *, unique=False):
+    def _match_str(self, items):
         """
         Given a :class:`~collections.Counter` of strings in *items*, find any
         common fixed-length patterns or string-encoded ints, floats, and a
@@ -365,10 +362,11 @@ class Analyzer:
         than :attr:`bad_threshold` percent invalid conversions), provided the
         maximum string length is below :attr:`max_numeric_len`.
         """
+        unique = max(items.values()) == 1
         total = sum(items.values())
         if '' in items:
             if items[''] / total > self.empty_threshold:
-                return Str(items.keys())
+                return Str(items)
             del items['']
         bad_threshold = ceil(total * self.bad_threshold)
         if unique or bad_threshold == 0:
@@ -391,23 +389,21 @@ class Analyzer:
                     sample = items
                     break
 
-        stats = Stats.from_lengths(sample)
-        if stats.max <= self.max_numeric_len:
-            result = self._match_numeric_str(sample, unique=unique,
-                                             bad_threshold=bad_threshold)
+        lengths = ScalarStats.from_lengths(sample)
+        if lengths.max <= self.max_numeric_len:
+            result = self._match_numeric_str(sample, bad_threshold=bad_threshold)
             if result is not None:
                 return self._match_possible_datetime(result)
-        if stats.min == stats.max:
-            return self._match_fixed_len_str(sample, unique=unique,
-                                             bad_threshold=bad_threshold)
+        if lengths.min == lengths.max:
+            return self._match_fixed_len_str(sample, bad_threshold=bad_threshold)
         # XXX Add is_base64 (and others?)
         if all(value.startswith(('http://', 'https://')) for value in sample):
             # XXX Refine this to parse URLs
             return URL(unique=unique)
         else:
-            return Str(sample, unique=unique)
+            return Str(sample)
 
-    def _match_fixed_len_str(self, items, *, unique=False, bad_threshold=0):
+    def _match_fixed_len_str(self, items, *, bad_threshold=0):
         """
         Given a :class:`~collections.Counter` of strings all of the same length
         in *items*, discover any common fixed-length patterns that cover the
@@ -417,7 +413,7 @@ class Analyzer:
         # variable length date-times)
         for pattern in FIXED_DATETIME_PATTERNS:
             try:
-                return DateTime.from_strings(items, pattern, unique=unique,
+                return DateTime.from_strings(items, pattern,
                                              bad_threshold=bad_threshold)
             except ValueError:
                 pass
@@ -445,9 +441,9 @@ class Analyzer:
             ) if char == Digit else char
             for char in pattern
         )
-        return Str(items, pattern, unique=unique)
+        return Str(items, pattern)
 
-    def _match_numeric_str(self, items, *, unique=False, bad_threshold=0):
+    def _match_numeric_str(self, items, *, bad_threshold=0):
         """
         Given a :class:`~collections.Counter` of strings in *items*, attempt a
         variety of numeric conversions on them to discover if they represent a
@@ -455,17 +451,14 @@ class Analyzer:
         """
         representations = (
             (partial(
-                Bool.from_strings,
-                bad_threshold=bad_threshold), BOOL_PATTERNS),
+                Bool.from_strings, bad_threshold=bad_threshold), BOOL_PATTERNS),
             (partial(
-                Int.from_strings,
-                unique=unique, bad_threshold=bad_threshold), INT_PATTERNS),
+                Int.from_strings, bad_threshold=bad_threshold), INT_PATTERNS),
             (partial(
-                Float.from_strings,
-                unique=unique, bad_threshold=bad_threshold), ('f',)),
+                Float.from_strings, bad_threshold=bad_threshold), ('f',)),
             (partial(
                 DateTime.from_strings,
-                unique=unique, bad_threshold=bad_threshold), VAR_DATETIME_PATTERNS),
+                bad_threshold=bad_threshold), VAR_DATETIME_PATTERNS),
         )
         for conversion, formats in representations:
             for fmt in formats:
@@ -486,16 +479,16 @@ class Analyzer:
         in_range = lambda n: self.min_timestamp <= n <= self.max_timestamp
         if (
                 isinstance(pattern, (Int, Float)) and
-                in_range(pattern.stats.min) and
-                in_range(pattern.stats.max)):
+                in_range(pattern.values.min) and
+                in_range(pattern.values.max)):
             return DateTime.from_numbers(pattern)
         elif (
                 isinstance(pattern, StrRepr) and (
                     (isinstance(pattern.inner, Int) and pattern.pattern == 'd') or
                     isinstance(pattern.inner, Float)
                 ) and
-                in_range(pattern.inner.stats.min) and
-                in_range(pattern.inner.stats.max)):
+                in_range(pattern.inner.values.min) and
+                in_range(pattern.inner.values.max)):
             return DateTime.from_numbers(pattern)
         else:
             return pattern

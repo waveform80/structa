@@ -31,18 +31,22 @@ def test_to_bool():
 
 def test_try_conversion():
     data = range(10)
-    str_data = [str(n) for n in data]
-    assert try_conversion(str_data, int) == set(data)
-    assert try_conversion(str_data + [''], int, threshold=1) == set(data)
+    str_data = Counter(str(n) for n in data)
+    assert try_conversion(str_data, int) == Counter(data)
+    str_data[''] = 1
+    assert try_conversion(str_data, int, threshold=1) == Counter(data)
     with pytest.raises(ValueError):
-        try_conversion(str_data + [''] * 4, int, threshold=2)
+        str_data[''] = 4
+        try_conversion(str_data, int, threshold=2)
 
 
 def test_stats():
-    assert Stats.from_sample(range(10)) == Stats(10, 0, 9, 5)
-    assert Stats.from_sample(range(1000)) == Stats(1000, 0, 999, 500)
+    assert ScalarStats.from_sample(Counter(range(10))) == ScalarStats(
+        Counter(range(10)), 10, 0, 9, 5)
+    assert ScalarStats.from_sample(Counter(range(1000))) == ScalarStats(
+        Counter(range(1000)), 1000, 0, 999, 500)
     with pytest.raises(AssertionError):
-        Stats.from_sample([])
+        ScalarStats.from_sample([])
 
 
 def test_dict():
@@ -52,8 +56,8 @@ def test_dict():
         {'a': 1, 'b': 2},
     ]
     pattern = Dict(data)
-    assert pattern.stats.min == 0
-    assert pattern.stats.max == 2
+    assert pattern.lengths.min == 0
+    assert pattern.lengths.max == 2
     assert pattern.pattern is None
     assert str(pattern) == '{}'
     assert pattern.validate({})
@@ -67,11 +71,11 @@ def test_dict_with_pattern():
         {'a': 1, 'b': 2},
     ]
     defs = {
-        Str({'a', 'b'}, pattern=(AnyChar,)): Int({1, 2}),
+        Str(Counter({'a', 'b'}), pattern=(AnyChar,)): Int(Counter({1, 2})),
     }
     pattern = Dict(data, fields=defs.keys(), pattern=tuple(defs.values()))
-    assert pattern.stats.min == 0
-    assert pattern.stats.max == 2
+    assert pattern.lengths.min == 0
+    assert pattern.lengths.max == 2
     assert pattern.fields is not None
     assert pattern.pattern is not None
     assert str(pattern) == '{str pattern=.: int range=1..2}'
@@ -85,13 +89,13 @@ def test_dict_with_long_pattern():
         {'num': 4, 'label': 'quux', 'active': 'f'},
     ]
     defs = {
-        Choice('num', optional=False): Int({1, 2, 3, 4}),
-        Choice('label', optional=False): Str({'foo', 'bar', 'baz', 'quux'}, pattern=None),
-        Choice('active', optional=True): StrRepr(Bool({False, True}), pattern="'f'|'t'"),
+        Choice('num', optional=False): Int(Counter({1, 2, 3, 4})),
+        Choice('label', optional=False): Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None),
+        Choice('active', optional=True): StrRepr(Bool(Counter({False, True})), pattern="'f'|'t'"),
     }
     pattern = Dict(data, fields=defs.keys(), pattern=tuple(defs.values()))
-    assert pattern.stats.min == 2
-    assert pattern.stats.max == 3
+    assert pattern.lengths.min == 2
+    assert pattern.lengths.max == 3
     assert pattern.pattern is not None
     assert str(pattern) == """\
 {
@@ -108,8 +112,8 @@ def test_tuple():
         (1, 2, 3),
     ]
     pattern = Tuple(data)
-    assert pattern.stats.min == 0
-    assert pattern.stats.max == 3
+    assert pattern.lengths.min == 0
+    assert pattern.lengths.max == 3
     assert pattern.fields is None
     assert pattern.pattern is None
     assert str(pattern) == '()'
@@ -124,16 +128,17 @@ def test_tuple_with_pattern():
         ('baz', 3),
     ]
     defs = {
-        Choice(0, False): Str(['foo', 'bar', 'baz'], pattern=(AnyChar, AnyChar, AnyChar)),
-        Choice(1, False): Int([1, 2, 3]),
+        Choice(0, False): Str(Counter(['foo', 'bar', 'baz']),
+                              pattern=(AnyChar, AnyChar, AnyChar)),
+        Choice(1, False): Int(Counter([1, 2, 3])),
     }
     pattern = Tuple(
         data,
         fields=tuple(defs.keys()),
         pattern=tuple(defs.values())
     )
-    assert pattern.stats.min == 2
-    assert pattern.stats.max == 2
+    assert pattern.lengths.min == 2
+    assert pattern.lengths.max == 2
     assert pattern.fields is not None
     assert pattern.pattern is not None
     assert str(pattern) == '(str pattern=..., int range=1..3)'
@@ -147,17 +152,17 @@ def test_tuple_with_long_pattern():
         book('J. R. R. Tolkien', 'The Return of the King', '1955-10-20'),
     ]
     defs = {
-        Choice('author', False): Str([t[0] for t in data], pattern=tuple('J. R. R. Tolkien')),
-        Choice('title', False): Str([t[1] for t in data], pattern=None),
+        Choice('author', False): Str(Counter(t[0] for t in data), pattern=tuple('J. R. R. Tolkien')),
+        Choice('title', False): Str(Counter(t[1] for t in data), pattern=None),
         Choice('published', False): StrRepr(
-            DateTime([dt.datetime.strptime(t[2], '%Y-%m-%d') for t in data], unique=True),
+            DateTime(Counter(dt.datetime.strptime(t[2], '%Y-%m-%d') for t in data)),
             pattern='%Y-%m-%d'
         )
     }
     pattern = List([data], pattern=[
         Tuple(data, fields=tuple(defs.keys()), pattern=tuple(defs.values()))
     ])
-    assert pattern.stats.min == pattern.stats.max == 3
+    assert pattern.lengths.min == pattern.lengths.max == 3
     assert pattern.pattern[0].fields is not None
     assert pattern.pattern[0].pattern is not None
     assert str(pattern) == """\
@@ -177,8 +182,8 @@ def test_list():
         [1, 2, 3],
     ]
     pattern = List(data)
-    assert pattern.stats.min == 0
-    assert pattern.stats.max == 3
+    assert pattern.lengths.min == 0
+    assert pattern.lengths.max == 3
     assert pattern.pattern is None
     assert str(pattern) == '[]'
     assert pattern.validate([])
@@ -191,9 +196,9 @@ def test_list_with_pattern():
         [1, 2, 3],
         [1, 2, 3, 4],
     ]
-    pattern = List(data, pattern=[Int({1, 2, 3, 4})])
-    assert pattern.stats.min == 2
-    assert pattern.stats.max == 4
+    pattern = List(data, pattern=[Int(Counter(j for i in data for j in i))])
+    assert pattern.lengths.min == 2
+    assert pattern.lengths.max == 4
     assert pattern.pattern is not None
     assert str(pattern) == '[int range=1..4]'
 
@@ -208,14 +213,14 @@ def test_list_with_long_pattern():
         ]
     ]
     defs = {
-        Choice('num', optional=False): Int({1, 2, 3, 4}),
-        Choice('label', optional=False): Str({'foo', 'bar', 'baz', 'quux'}, pattern=None),
-        Choice('active', optional=True): StrRepr(Bool({False, True}), pattern="f|t"),
+        Choice('num', optional=False): Int(Counter({1, 2, 3, 4})),
+        Choice('label', optional=False): Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None),
+        Choice('active', optional=True): StrRepr(Bool(Counter({False, True})), pattern="f|t"),
     }
     pattern = List(data, pattern=[
         Dict(data[0], fields=defs.keys(), pattern=tuple(defs.values()))
     ])
-    assert pattern.stats.min == pattern.stats.max == 4
+    assert pattern.lengths.min == pattern.lengths.max == 4
     assert pattern.pattern is not None
     assert str(pattern) == """\
 [
@@ -229,9 +234,9 @@ def test_list_with_long_pattern():
 
 def test_str():
     data = ['foo', 'bar', 'baz', 'quux']
-    pattern = Str(data, unique=True)
-    assert pattern.stats.min == 3
-    assert pattern.stats.max == 4
+    pattern = Str(Counter(data))
+    assert pattern.lengths.min == 3
+    assert pattern.lengths.max == 4
     assert pattern.pattern is None
     assert pattern.unique
     assert str(pattern) == 'str'
@@ -241,8 +246,8 @@ def test_str():
 
 def test_fixed_str():
     data = ['0x{:04x}'.format(n) for n in range(32)]
-    pattern = Str(data, pattern = ('0', 'x', '0', '0', HexDigit, HexDigit), unique=True)
-    assert pattern.stats.min == pattern.stats.max == 6
+    pattern = Str(Counter(data), pattern = ('0', 'x', '0', '0', HexDigit, HexDigit))
+    assert pattern.lengths.min == pattern.lengths.max == 6
     assert pattern.unique
     assert str(pattern) == 'str pattern=0x00XX'
     assert pattern.validate('0x0012')
@@ -252,7 +257,7 @@ def test_fixed_str():
 
 
 def test_str_repr():
-    pattern = StrRepr(Int({1, 2, 3, 4}), pattern='d')
+    pattern = StrRepr(Int(Counter({1, 2, 3, 4})), pattern='d')
     assert str(pattern) == 'str of int range=1..4 format=d'
     assert pattern.validate('1')
     assert not pattern.validate(1)
@@ -260,24 +265,24 @@ def test_str_repr():
 
 
 def test_num_repr():
-    pattern = NumRepr(DateTime({
+    pattern = NumRepr(DateTime(Counter((
         dt.datetime.utcfromtimestamp(0),
         dt.datetime.utcfromtimestamp(1),
         dt.datetime.utcfromtimestamp(86400),
-    }), pattern=int)
+    ))), pattern=int)
     assert str(pattern) == 'int of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
-    pattern = NumRepr(DateTime({
+    pattern = NumRepr(DateTime(Counter((
         dt.datetime.utcfromtimestamp(0.0),
         dt.datetime.utcfromtimestamp(1.0),
         dt.datetime.utcfromtimestamp(86400.0),
-    }), pattern=float)
+    ))), pattern=float)
     assert str(pattern) == 'float of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
 
 
 def test_int():
     data = {1, 2, 3, 1000}
-    pattern = Int.from_strings([str(i) for i in data], 'd', True)
-    assert pattern == StrRepr(Int(data, unique=True), pattern='d')
+    pattern = Int.from_strings(Counter(str(i) for i in data), 'd', True)
+    assert pattern == StrRepr(Int(Counter(data)), pattern='d')
     assert pattern.validate('5')
     assert not pattern.validate(1)
     assert not pattern.validate('2000')
@@ -286,8 +291,8 @@ def test_int():
 
 def test_float():
     data = {0.0, 1.0, 1000.0}
-    pattern = Float.from_strings([str(f) for f in data], 'f', True)
-    assert pattern == StrRepr(Float(data, unique=True), pattern='f')
+    pattern = Float.from_strings(Counter(str(f) for f in data), 'f', True)
+    assert pattern == StrRepr(Float(Counter(data)), pattern='f')
     assert pattern.validate('1.0')
     assert not pattern.validate(1.0)
     assert not pattern.validate('2000.0')
@@ -303,8 +308,8 @@ def test_datetime():
         dt.datetime.strptime('1970-02-01 00:00:00', iso_fmt),
     }
     pattern = DateTime.from_strings(
-        [d.strftime(iso_fmt) for d in data], iso_fmt, True)
-    assert pattern == StrRepr(DateTime(data, unique=True), pattern=iso_fmt)
+        Counter(d.strftime(iso_fmt) for d in data), iso_fmt)
+    assert pattern == StrRepr(DateTime(Counter(data)), pattern=iso_fmt)
     assert pattern.validate('1970-01-01 00:30:00')
     assert not pattern.validate(86400)
     assert not pattern.validate('1980-01-01 00:00:00')
@@ -319,9 +324,9 @@ def test_datetime_numrepr():
         dt.datetime.fromtimestamp(86400),
         dt.datetime.fromtimestamp(100000),
     }
-    numbers = Int({d.timestamp() for d in data}, unique=True)
+    numbers = Int(Counter(d.timestamp() for d in data))
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == NumRepr(DateTime(data, unique=True), pattern=int)
+    assert pattern == NumRepr(DateTime(Counter(data)), pattern=int)
     assert pattern.validate(1000)
     assert not pattern.validate(1000.0)
     assert not pattern.validate(1000000000000)
@@ -335,16 +340,16 @@ def test_datetime_strrepr_numrepr():
         dt.datetime.fromtimestamp(86400),
         dt.datetime.fromtimestamp(100000),
     }
-    numbers = StrRepr(Int({d.timestamp() for d in data}, unique=True), pattern='d')
+    numbers = StrRepr(Int(Counter(d.timestamp() for d in data)), pattern='d')
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == StrRepr(NumRepr(DateTime(data, unique=True), pattern=int), pattern='d')
+    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=int), pattern='d')
     assert pattern.validate('1000')
     assert not pattern.validate('1000000000000')
     assert not pattern.validate('foo')
 
-    numbers = StrRepr(Float({d.timestamp() for d in data}, unique=True), pattern='f')
+    numbers = StrRepr(Float(Counter(d.timestamp() for d in data)), pattern='f')
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == StrRepr(NumRepr(DateTime(data, unique=True), pattern=float), pattern='f')
+    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=float), pattern='f')
     assert pattern.validate('1000')
     assert pattern.validate('1000.0')
     assert not pattern.validate('1e12')
@@ -352,8 +357,8 @@ def test_datetime_strrepr_numrepr():
 
 
 def test_bool():
-    pattern = Bool.from_strings({'f', 't'}, 'f|t')
-    assert pattern == StrRepr(Bool({False, True}), pattern='f|t')
+    pattern = Bool.from_strings(Counter(('f', 't')), 'f|t')
+    assert pattern == StrRepr(Bool(Counter((False, True))), pattern='f|t')
     assert pattern.validate('t')
     assert not pattern.validate('true')
     assert not pattern.validate(True)

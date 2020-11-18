@@ -130,6 +130,8 @@ def detect_encoding(config):
             len(config.sample) < config.sample_bytes
         ):
             buf = config.file.read(4096)
+            if not buf:
+                break
             config.sample += buf
             detector.feed(buf)
             if detector.done:

@@ -50,7 +50,7 @@ def test_analyze(tmpdir, capsys):
         json.dump(data, f)
     assert ui.main([filename]) == 0
     assert capsys.readouterr().out.strip() == str(List(
-        sample=[data], pattern=[Int(sample=data, unique=True)]))
+        sample=[data], pattern=[Int(Counter(data))]))
 
 
 def test_debug(tmpdir, capsys):
@@ -58,8 +58,8 @@ def test_debug(tmpdir, capsys):
     with open(filename, 'w') as f:
         f.write('foo bar baz')
     os.environ['DEBUG'] = '0'
-    assert ui.main([filename]) == 1
-    assert capsys.readouterr().err.strip() == 'Expecting value: line 1 column 1 (char 0)'
+    assert ui.main([filename, '--format', 'json']) == 1
+    assert capsys.readouterr().err.splitlines()[-1].strip() == 'Expecting value: line 1 column 1 (char 0)'
     os.environ['DEBUG'] = '1'
     with pytest.raises(Exception):
-        ui.main([filename])
+        ui.main([filename, '--format', 'json'])
