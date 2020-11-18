@@ -102,7 +102,7 @@ class Analyzer:
         *path*. The parent cardinality is tracked in *card* (for the purposes
         of determining optional choices).
         """
-        pattern = self._match(self._extract(it, path),
+        pattern = self._match(self._extract(it, path), path,
                               threshold=threshold, parent_card=card)
 
         if isinstance(pattern, Dict):
@@ -282,7 +282,7 @@ class Analyzer:
             except AttributeError:
                 yield from (TupleField(index) for index in range(len(it)))
 
-    def _match(self, items, *, threshold=None, parent_card=None):
+    def _match(self, items, path, *, threshold=None, parent_card=None):
         """
         Find a pattern which matches all (or most) of *items*, an iterable of
         objects found at a particular layer of the hierarchy.
@@ -320,15 +320,20 @@ class Analyzer:
             except TypeError:
                 return Value()
             else:
-                max_card = max(sample.values())
-                if len(sample) < threshold:
-                    return Choices(
-                        Choice(key, optional=count < parent_card)
-                        for key, count in sample.items()
-                    )
-                elif all(isinstance(value, TupleField) for value in sample):
-                    # If the number of tuple-fields exceeds the choice
-                    # threshold, just treat the index (or name) as general data
+                # If we're attempting to match the "keys" of a dict or tuple
+                # then apply the field threshold to split (and analyze)
+                # sub-structures. If there are commonalities in the sub-structs
+                # we'll re-merge them later
+                if path and isinstance(path[-1], (Dict, Tuple)):
+                    if len(sample) < threshold:
+                        return Choices(
+                            Choice(key, optional=count < parent_card)
+                            for key, count in sample.items()
+                        )
+
+                # If the number of tuple-fields exceeds the choice threshold,
+                # just treat the index (or name) as general data
+                if all(isinstance(value, TupleField) for value in sample):
                     if all(value.name for value in sample):
                         sample = Counter(value.name for value in sample)
                     else:
@@ -362,8 +367,8 @@ class Analyzer:
         than :attr:`bad_threshold` percent invalid conversions), provided the
         maximum string length is below :attr:`max_numeric_len`.
         """
-        unique = max(items.values()) == 1
         total = sum(items.values())
+        unique = len(items) == total
         if '' in items:
             if items[''] / total > self.empty_threshold:
                 return Str(items)
