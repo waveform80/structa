@@ -88,9 +88,9 @@ def to_bool(s, false='0', true='1'):
         raise ValueError('not a valid bool {!r}'.format(s))
 
 
-def try_conversion(iterable, conversion, threshold=0):
+def try_conversion(sample, conversion, threshold=0):
     """
-    Given a :class:`~collections.Counter` *iterable* of strings, call the
+    Given a :class:`~collections.Counter` *sample* of strings, call the
     specified *conversion* on each string returning the set of converted
     values.
 
@@ -103,21 +103,28 @@ def try_conversion(iterable, conversion, threshold=0):
     will be ignored. If *threshold* is exceeded, then :exc:`ValueError` will
     be raised (or rather passed through from the underlying *conversion*).
     """
-    assert isinstance(iterable, (Counter, FrozenCounter))
+    assert isinstance(sample, (Counter, FrozenCounter))
+    assert sample
     result = Counter()
-    if not threshold:
-        for item, count in iterable.items():
+    if threshold:
+        assert threshold > 0
+        for item, count in sample.items():
+            try:
+                result[conversion(item)] += count
+            except ValueError: # XXX and TypeError?
+                threshold -= count
+                if threshold < 0:
+                    raise
+        if result:
+            return result
+        else:
+            # If threshold permitted us to get to this point but we managed to
+            # convert absolutely nothing, that's not success!
+            raise ValueError('zero successful conversions')
+    else:
+        for item, count in sample.items():
             result[conversion(item)] += count
         return result
-    assert threshold > 0
-    for item, count in iterable.items():
-        try:
-            result[conversion(item)] += count
-        except ValueError: # XXX and TypeError?
-            threshold -= count
-            if threshold < 0:
-                raise
-    return result
 
 
 class ContainerStats(namedtuple('_ContainerStats', (
@@ -550,11 +557,11 @@ class Choice(namedtuple('_Choice', ('value', 'optional'))):
 class Value:
     __slots__ = ()
 
-    def __eq__(self, other):
-        return isinstance(other, Value)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def __new__(cls):
+        try:
+            return _value
+        except NameError:
+            return super().__new__(cls)
 
     def __str__(self):
         return 'value'
@@ -569,11 +576,11 @@ class Value:
 class Empty:
     __slots__ = ()
 
-    def __eq__(self, other):
-        return isinstance(other, Empty)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    def __new__(cls):
+        try:
+            return _empty
+        except NameError:
+            return super().__new__(cls)
 
     def __str__(self):
         return ''
@@ -583,3 +590,7 @@ class Empty:
 
     def validate(self, value):
         return False
+
+
+_empty = Empty()
+_value = Value()

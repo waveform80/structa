@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import sys
 import csv
 import json
@@ -14,6 +15,10 @@ from time import sleep
 import humanize
 from blessings import Terminal
 from chardet.universaldetector import UniversalDetector
+try:
+    from ruamel import yaml
+except ImportError:
+    yaml = None
 
 from . import analyzer, patterns
 from .duration import parse_duration_or_timestamp
@@ -67,7 +72,7 @@ def get_config(args):
         help="The data-file to analyze; if this is - or unspecified then "
         "stdin will be read for the data")
     parser.add_argument(
-        '-f', '--format', choices=('auto', 'csv', 'json'), default='auto',
+        '-f', '--format', choices=('auto', 'csv', 'json', 'yaml'), default='auto',
         help="The format of the data file; if this is unspecified, it will "
         "be guessed based on the first bytes of the file; valid choices are "
         "auto (the default), csv, or json")
@@ -125,15 +130,6 @@ def get_config(args):
         "floating-point, may use in its representation within the file. "
         "Defaults to %(default)s")
     parser.add_argument(
-        '--csv-format', type=str, metavar='FIELD[QUOTE]', default='auto',
-        help="The characters used to delimit fields and strings in a CSV "
-        "file. Can be specified as a single character which will be "
-        "used as the field delimiter, or two characters in which case the "
-        "second will be used as the string quotation character. Can also be "
-        '"auto" which indicates the delimiters should be detected. Bear in '
-        "mind that some characters may require quoting for the shell, e.g. "
-        "';\"'")
-    parser.add_argument(
         '--sample-bytes', type=size, metavar='SIZE', default='1m',
         help="The number of bytes to sample from the file for the purposes of "
         "encoding and format detection. Defaults to %(default)s. Typical "
@@ -145,6 +141,23 @@ def get_config(args):
         help="Controls whether leading and trailing found in strings in the "
         "will be left alone and thus included or excluded in any data-type "
         "analysis. The default is to strip whitespace")
+    parser.add_argument(
+        '--csv-format', type=str, metavar='FIELD[QUOTE]', default='auto',
+        help="The characters used to delimit fields and strings in a CSV "
+        "file. Can be specified as a single character which will be "
+        "used as the field delimiter, or two characters in which case the "
+        "second will be used as the string quotation character. Can also be "
+        '"auto" which indicates the delimiters should be detected. Bear in '
+        "mind that some characters may require quoting for the shell, e.g. "
+        "';\"'")
+    if yaml:
+        parser.add_argument(
+            '--yaml-safe', action='store_true', default=True)
+        parser.add_argument(
+            '--no-yaml-safe', action='store_false', dest='yaml_safe',
+            help='Controls whether the "safe" or "unsafe" YAML loader is used '
+            'to parse YAML files. The default is the "safe" parser. Only use '
+            "--no-yaml-safe if you trust the source of your data")
     parser.set_defaults(sample=b'', csv_dialect=None)
 
     config = parser.parse_args(args)
@@ -293,23 +306,48 @@ def detect_format(config):
                     'missing xml header'))
                 config.format = 'xml'
             else:
-                config.format = 'csv'
-                if config.csv_format == 'auto':
-                    # First line is possible header, last is possibly partial
-                    config.csv_dialect = csv.Sniffer().sniff(
-                        sample[:1024], delimiters=",; \t")
+                # Strip potentially partial last line off
+                sample = sample.splitlines(keepends=True)[:-1]
+                quote_delims = re.compile('["\']')
+                field_delims = re.compile('[,; \\t]')
+                csv_score = yaml_score = 0
+                for line in sample:
+                    if line.startswith('#') or line[:1] in (' -'):
+                        # YAML comments, indented lines, or "-" prefixed items
+                        # all of which are atypical in CSV
+                        yaml_score += 1
+                    elif (
+                        len(quote_delims.findall(line)) > 1 and
+                        len(field_delims.findall(line)) > 0
+                    ):
+                        # Both field and quote delimiters found in the line.
+                        # Also possible for YAML (hence elif) but
+                        # pre-ponderance should indicate CSV
+                        csv_score += 1
+                if yaml_score > csv_score:
+                    config.format = 'yaml'
+                elif csv_score > 0:
+                    config.format = 'csv'
+                    if config.csv_format == 'auto':
+                        # First line is possible header; only need a few Kb for
+                        # analysis
+                        sample = ''.join(sample[1:])[:8192]
+                        config.csv_dialect = csv.Sniffer().sniff(
+                            sample, delimiters=",; \t")
+                    else:
+                        class dialect(csv.Dialect):
+                            delimiter = config.csv_format[:1]
+                            quotechar = (
+                                None if len(config.csv_format) == 1 else
+                                config.csv_format[1:])
+                            escapechar = None
+                            doublequote = True
+                            lineterminator = '\r\n'
+                            quoting = csv.QUOTE_MINIMAL
+                        config.csv_dialect = dialect
                 else:
-                    class dialect(csv.Dialect):
-                        delimiter = config.csv_format[:1]
-                        quotechar = (
-                            None if len(config.csv_format) == 1 else
-                            config.csv_format[1:])
-                        escapechar = None
-                        doublequote = True
-                        lineterminator = '\r\n'
-                        quoting = csv.QUOTE_MINIMAL
-                    config.csv_dialect = dialect
-                # XXX Output CSV detected dialect?
+                    raise ValueError('unable to guess the file format')
+        # XXX Output CSV detected dialect?
 
 
 def load_data(config, progress):
@@ -332,6 +370,12 @@ def load_data(config, progress):
         reader = csv.reader(data.splitlines(keepends=True)[1:],
                             config.csv_dialect)
         return list(reader)
+    elif config.format == 'yaml':
+        if not yaml:
+            raise ImportError('ruamel.yaml package is not installed')
+        else:
+            loader = yaml.SafeLoader if config.yaml_safe else yaml.UnsafeLoader
+            return yaml.load(io.StringIO(data), Loader=loader)
     elif config.format == 'xml':
         raise NotImplementedError()
 
