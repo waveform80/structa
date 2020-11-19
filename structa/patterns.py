@@ -10,15 +10,20 @@ from .chars import Digit, AnyChar
 
 class FrozenCounter(Mapping):
     def __init__(self, it):
-        if isinstance(it, Counter):
-            self._counter = it.copy()
-        else:
-            self._counter = Counter(it)
+        self._counter = Counter(it)
         self._hash = None
 
     @classmethod
     def from_counter(cls, counter):
-        return cls(counter.elements())
+        if isinstance(counter, Counter):
+            self = cls(())
+            self._counter = counter.copy()
+            return self
+        elif isinstance(counter, FrozenCounter):
+            # It's frozen; no need to go recreating stuff
+            return counter
+        else:
+            assert False
 
     def most_common(self, n=None):
         return self._counter.most_common(n)

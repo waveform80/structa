@@ -14,7 +14,28 @@ from . import analyzer, patterns
 from .duration import parse_duration_or_timestamp
 
 
-def cli_main(args=None):
+def main(args=None):
+    warnings.simplefilter('ignore', category=analyzer.ValidationWarning)
+    try:
+        config = get_config(args)
+        a = Analyzer.from_config(config)
+        data = load_data(config)
+        print(a.analyze(data))
+    except Exception as e:
+        debug = int(os.environ.get('DEBUG', '0'))
+        if not debug:
+            print(str(e), file=sys.stderr)
+            return 1
+        elif debug == 1:
+            raise
+        else:
+            import pdb
+            pdb.post_mortem()
+    else:
+        return 0
+
+
+def get_config(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         'file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin,
@@ -30,6 +51,14 @@ def cli_main(args=None):
         help="The string encoding of the file, e.g. utf-8 (default: "
         '%(default)s). If "auto" then the file will be sampled to determine '
         "the encoding (see --sample-bytes)")
+    parser.add_argument(
+        '--encoding-strict', action='store_true', default=True)
+    parser.add_argument(
+        '--no-encoding-strict', action='store_false', dest='encoding_strict',
+        help="Controls whether character encoding is strictly enforced and "
+        "will result in an error if invalid characters are found during "
+        "analysis. If disabled, a replacement character will be inserted "
+        "for invalid sequences. The default is strict decoding")
     parser.add_argument(
         '-C', '--choice-threshold', type=int, metavar='INT', default=20,
         help="If the number of distinct values in a field is less than this "
@@ -92,17 +121,13 @@ def cli_main(args=None):
         "will be left alone and thus included or excluded in any data-type "
         "analysis. The default is to strip whitespace")
     parser.set_defaults(sample=b'', csv_dialect=None)
+
     config = parser.parse_args(args)
     config.field_threshold = (
         config.choice_threshold
         if config.field_threshold is None else
         config.field_threshold)
-
-    warnings.simplefilter('ignore', category=analyzer.ValidationWarning)
-
-    a = Analyzer.from_config(config)
-    data = load_data(config)
-    print(a.analyze(data))
+    return config
 
 
 class Analyzer(analyzer.Analyzer):
@@ -125,24 +150,19 @@ def detect_encoding(config):
     # interface)
     if config.encoding == 'auto':
         detector = UniversalDetector()
-        while (
-            config.encoding == 'auto' and
-            len(config.sample) < config.sample_bytes
-        ):
+        while len(config.sample) < config.sample_bytes and not detector.done:
             buf = config.file.read(4096)
             if not buf:
                 break
             config.sample += buf
             detector.feed(buf)
-            if detector.done:
-                break
         result = detector.close()
         if result['confidence'] < 0.9:
-            warnings.warn(ValidationWarning(
+            warnings.warn(analyzer.ValidationWarning(
                 'Low confidence ({confidence}) in detected character set'.
                 format_map(result)))
         config.encoding = result['encoding']
-        print('Detected charset {encoding} (confidence: {confidence})'.
+        print('Detected encoding {encoding} (confidence: {confidence})'.
               format_map(result), file=sys.stderr)
 
 
@@ -193,7 +213,9 @@ def load_data(config):
     detect_encoding(config)
     detect_format(config)
     data = config.sample + config.file.read()
-    data = data.decode(config.encoding, errors='replace')
+    data = data.decode(
+        config.encoding,
+        errors='strict' if config.encoding_strict else 'replace')
 
     if config.format == 'json':
         return json.loads(data)
@@ -204,23 +226,6 @@ def load_data(config):
         return list(reader)
     elif config.format == 'xml':
         raise NotImplementedError()
-
-
-def main(args=None):
-    try:
-        cli_main(args)
-    except Exception as e:
-        debug = int(os.environ.get('DEBUG', '0'))
-        if not debug:
-            print(str(e), file=sys.stderr)
-            return 1
-        elif debug == 1:
-            raise
-        else:
-            import pdb
-            pdb.post_mortem()
-    else:
-        return 0
 
 
 _start = datetime.now()

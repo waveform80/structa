@@ -1,10 +1,22 @@
 import datetime as dt
-from collections import namedtuple
+from collections import namedtuple, Counter
 
 import pytest
 
 from structa.chars import *
 from structa.patterns import *
+
+
+def test_frozen_counter():
+    c = Counter((1, 2, 3) * 100 + (4, 5) * 50)
+    f = FrozenCounter(c)
+    assert c == f
+    c[6] = 1
+    assert c != f
+    d = {f: 1}
+    assert d[f] == 1
+    with pytest.raises(AssertionError):
+        FrozenCounter.from_counter({})
 
 
 def test_format_int():

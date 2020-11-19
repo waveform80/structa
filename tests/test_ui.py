@@ -1,19 +1,41 @@
 import os
+import csv
 import json
 import datetime as dt
 from fractions import Fraction
 from unittest import mock
 
 import pytest
-
 from dateutil.relativedelta import relativedelta
+
+from structa.analyzer import ValidationWarning
 from structa.patterns import *
 from structa import ui
 
 
+@pytest.fixture
+def table(request):
+    return [
+        ['Name', 'Nationality'],
+        ['Johann Gottfried Hübert', 'German'],
+        ['Francis Bacon', 'British'],
+        ['August Sallé', 'French'],
+        ['Adam Bøving', 'Danish'],
+        ['Justus Henning Böhmer', 'German'],
+        ['Émilie du Châtelet', 'French'],
+        ['Mihály Csokonai Vitéz', 'Hungarian'],
+        ['Carl von Linné', 'Swedish'],
+        ['François Marie Arouet', 'French'],
+        # The following rows cannot be encoded in latin-1
+        ['Zdenek Bouček', 'Czech'],
+        ['Ruđer Josip Bošković', 'Croatian'],
+        ['Hugo Kołłątaj', 'Polish'],
+    ]
+
+
 def test_help(capsys):
     with pytest.raises(SystemExit) as exc_info:
-        ui.cli_main(['-h'])
+        ui.main(['-h'])
     assert exc_info.value.args[0] == 0  # return code 0
     captured = capsys.readouterr()
     assert captured.out.lstrip().startswith('usage: ')
@@ -43,7 +65,37 @@ def test_num():
     assert isinstance(ui.num('1e0'), float)
 
 
-def test_analyze(tmpdir, capsys):
+def test_encoding(tmpdir, table):
+    filename = str(tmpdir.join('latin-1.csv'))
+    with open(filename, 'w', encoding='latin-1') as f:
+        writer = csv.writer(f)
+        for row in table[:-3]:
+            writer.writerow(row)
+    with pytest.warns(ValidationWarning):
+        assert ui.load_data(ui.get_config([filename])) == table[1:-3]
+    assert ui.load_data(ui.get_config([filename, '-e', 'latin-1'])) == table[1:-3]
+    with pytest.raises(UnicodeError):
+        ui.load_data(ui.get_config([filename, '-e', 'utf-8']))
+
+    filename = str(tmpdir.join('utf-8.csv'))
+    with open(filename, 'w', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        for row in table:
+            writer.writerow(row)
+    assert ui.load_data(ui.get_config([filename])) == table[1:]
+
+
+#def test_csv_format(tmpdir, table):
+#    filename = str(tmpdir.join('commas.csv'))
+#    with open(filename, 'w', encoding='utf-8') as f:
+#        writer = csv.writer(f)
+#        for row in table:
+#            writer.writerow(row)
+#    assert ui.main([filename]) == 0
+#    assert ui
+
+
+def test_main(tmpdir, capsys):
     data = list(range(100))
     filename = str(tmpdir.join('foo.json'))
     with open(filename, 'w') as f:
