@@ -7,6 +7,8 @@ import argparse
 import warnings
 from datetime import datetime, timedelta
 from fractions import Fraction
+from threading import Thread
+from queue import Queue
 
 from chardet.universaldetector import UniversalDetector
 
@@ -19,9 +21,29 @@ def main(args=None):
     try:
         config = get_config(args)
         a = Analyzer.from_config(config)
-        data = load_data(config)
-        print(a.analyze(data))
+        d = load_data(config)
+        q = Queue()
+        thread = Thread(
+            target=lambda a, d, q: q.put(a.analyze(d)),
+            args=(a, d, q),
+            daemon=True
+        )
+        thread.start()
+        while True:
+            if a.progress is None:
+                print('\rMeasuring size',
+                      end='', file=sys.stderr, flush=True)
+            else:
+                print('\rAnalyzing: {p:.1f}%  '
+                      .format(p=100 * float(a.progress)),
+                      end='', file=sys.stderr, flush=True)
+            thread.join(0.1)
+            if not thread.is_alive():
+                break
+        print()
+        print(q.get(timeout=1, block=True))
     except Exception as e:
+        print('', file=sys.stderr)
         debug = int(os.environ.get('DEBUG', '0'))
         if not debug:
             print(str(e), file=sys.stderr)
@@ -141,7 +163,8 @@ class Analyzer(analyzer.Analyzer):
             max_numeric_len=config.max_numeric_len,
             strip_whitespace=config.strip_whitespace,
             min_timestamp=config.min_timestamp,
-            max_timestamp=config.max_timestamp)
+            max_timestamp=config.max_timestamp,
+            track_progress=True)
 
 
 def detect_encoding(config):
@@ -162,8 +185,6 @@ def detect_encoding(config):
                 'Low confidence ({confidence}) in detected character set'.
                 format_map(result)))
         config.encoding = result['encoding']
-        print('Detected encoding {encoding} (confidence: {confidence})'.
-              format_map(result), file=sys.stderr)
 
 
 def detect_format(config):
@@ -175,7 +196,7 @@ def detect_format(config):
         if config.sample[:5] == '<?xml':
             config.format = 'xml'
         else:
-            sample = sample[:1024].lstrip()
+            sample = sample.lstrip()
             if sample[:1] in ('[', '{'):
                 config.format = 'json'
             elif sample[:5] == '<?xml':
@@ -211,12 +232,20 @@ def detect_format(config):
 
 def load_data(config):
     detect_encoding(config)
+    print('Detected encoding {config.encoding}'.format(config=config),
+          file=sys.stderr, flush=True)
     detect_format(config)
+    print('Detected format {config.format}'.format(config=config),
+          file=sys.stderr, flush=True)
+    print('Reading file {config.file.name}'.format(config=config),
+          file=sys.stderr, flush=True)
     data = config.sample + config.file.read()
+    print('Decoding file', file=sys.stderr, flush=True)
     data = data.decode(
         config.encoding,
         errors='strict' if config.encoding_strict else 'replace')
 
+    print('Parsing data', file=sys.stderr, flush=True)
     if config.format == 'json':
         return json.loads(data)
     elif config.format == 'csv':

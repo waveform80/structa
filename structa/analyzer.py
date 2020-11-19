@@ -70,11 +70,27 @@ class ValidationWarning(Warning):
     """
 
 
+def flatten(it):
+    try:
+        for key, value in it.items():
+            yield from flatten(key)
+            yield from flatten(value)
+    except AttributeError:
+        try:
+            if not isinstance(it, (str, bytes)):
+                for key in it:
+                    yield from flatten(key)
+        except TypeError:
+            pass
+    yield it
+
+
 class Analyzer:
     def __init__(self, *, bad_threshold=Fraction(2, 100),
                  empty_threshold=Fraction(98, 100), choice_threshold=20,
                  field_threshold=20, max_numeric_len=30, strip_whitespace=False,
-                 min_timestamp=None, max_timestamp=None):
+                 min_timestamp=None, max_timestamp=None,
+                 track_progress=False):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.choice_threshold = choice_threshold
@@ -88,13 +104,29 @@ class Analyzer:
             max_timestamp = now + relativedelta(years=10)
         self.min_timestamp = min_timestamp.timestamp()
         self.max_timestamp = max_timestamp.timestamp()
+        self.track_progress = track_progress
+        self._all_ids = set()
+        self._all_ids_card = 0
 
     def analyze(self, it):
         """
         Given some value *it* (typically an iterable or mapping), return a
         description of its structure.
         """
+        if self.track_progress:
+            self._all_ids = {id(item) for item in flatten(it)}
+        self._all_ids_card = len(self._all_ids)
         return self._analyze(it, ())
+
+    @property
+    def progress(self):
+        """
+        Tracks the current analysis progress as a :class:`~fractions.Fraction`.
+        """
+        if self._all_ids_card:
+            return 1 - Fraction(len(self._all_ids), self._all_ids_card)
+        else:
+            return None
 
     def _analyze(self, it, path, *, threshold=None, card=1):
         """
@@ -193,6 +225,8 @@ class Analyzer:
         by *path*, a sequence of pattern-matching objects.
         """
         if not path:
+            if self.track_progress:
+                self._all_ids.discard(id(it))
             yield it
         else:
             head, *tail = path
@@ -237,7 +271,12 @@ class Analyzer:
                             .format(key=key, head=head)))
         else:
             # keys
-            yield from it
+            if self.track_progress:
+                for item in it:
+                    self._all_ids.discard(id(item))
+                    yield item
+            else:
+                yield from it
 
     def _extract_tuple(self, it, path):
         """
@@ -273,7 +312,8 @@ class Analyzer:
                             "failed to validate field {field} against {head!r}"
                             .format(field=field, head=head)))
         else:
-            # "fields" (tuple of index, name)
+            # "fields" (tuple of index, name); note we don't bother with
+            # tracking ids of these for progress tracking
             try:
                 yield from (
                     TupleField(index, name)
