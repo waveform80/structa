@@ -66,23 +66,24 @@ def test_num():
 
 
 def test_encoding(tmpdir, table):
+    progress = mock.Mock()
     filename = str(tmpdir.join('latin-1.csv'))
     with open(filename, 'w', encoding='latin-1') as f:
         writer = csv.writer(f)
         for row in table[:-3]:
             writer.writerow(row)
     with pytest.warns(ValidationWarning):
-        assert ui.load_data(ui.get_config([filename])) == table[1:-3]
-    assert ui.load_data(ui.get_config([filename, '-e', 'latin-1'])) == table[1:-3]
+        assert ui.load_data(ui.get_config([filename]), progress) == table[1:-3]
+    assert ui.load_data(ui.get_config([filename, '-e', 'latin-1']), progress) == table[1:-3]
     with pytest.raises(UnicodeError):
-        ui.load_data(ui.get_config([filename, '-e', 'utf-8']))
+        ui.load_data(ui.get_config([filename, '-e', 'utf-8']), progress)
 
     filename = str(tmpdir.join('utf-8.csv'))
     with open(filename, 'w', encoding='utf-8') as f:
         writer = csv.writer(f)
         for row in table:
             writer.writerow(row)
-    assert ui.load_data(ui.get_config([filename])) == table[1:]
+    assert ui.load_data(ui.get_config([filename]), progress) == table[1:]
 
 
 #def test_csv_format(tmpdir, table):
