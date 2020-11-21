@@ -11,12 +11,17 @@ def test_frozen_counter():
     c = Counter((1, 2, 3) * 100 + (4, 5) * 50)
     f = FrozenCounter(c)
     assert c == f
+    assert Counter(c.elements()) == Counter(f.elements())
+    assert repr(f) == 'FrozenCounter({c!r})'.format(c=c)
     c[6] = 1
     assert c != f
+    assert Counter(c.elements()) != Counter(f.elements())
     d = {f: 1}
     assert d[f] == 1
     with pytest.raises(AssertionError):
         FrozenCounter.from_counter({})
+    assert FrozenCounter.from_counter(c)._counter is not c
+    assert FrozenCounter.from_counter(f) is f
 
 
 def test_format_int():
@@ -50,15 +55,31 @@ def test_try_conversion():
     with pytest.raises(ValueError):
         str_data[''] = 4
         try_conversion(str_data, int, threshold=2)
+    with pytest.raises(ValueError):
+        all_bad = Counter('' for n in range(4))
+        try_conversion(all_bad, int, threshold=5)
 
 
-def test_stats():
-    assert ScalarStats.from_sample(Counter(range(10))) == ScalarStats(
-        Counter(range(10)), 10, 0, 9, 5)
+def test_container_stats():
+    c = ContainerStats.from_sample([[], [1], [1, 2, 3]])
+    assert c == ContainerStats(3, 0, 3, 1)
+    assert c != []
+    assert repr(c) == 'ContainerStats(card=3, min=0, max=3, median=1)'
+
+
+def test_scalar_stats():
+    s = ScalarStats.from_sample(Counter(range(10)))
+    assert s == ScalarStats( Counter(range(10)), 10, 0, 9, 5)
+    assert s != []
+    assert repr(s) == 'ScalarStats(sample=..., card=10, min=0, max=9, median=5)'
     assert ScalarStats.from_sample(Counter(range(1000))) == ScalarStats(
         Counter(range(1000)), 1000, 0, 999, 500)
     with pytest.raises(AssertionError):
         ScalarStats.from_sample([])
+
+
+def test_pattern():
+    assert Pattern() != None
 
 
 def test_dict():
@@ -72,6 +93,7 @@ def test_dict():
     assert pattern.lengths.max == 2
     assert pattern.pattern is None
     assert str(pattern) == '{}'
+    assert repr(pattern) == 'Dict(pattern=None)'
     assert pattern.validate({})
     assert not pattern.validate('foo')
 
@@ -82,15 +104,17 @@ def test_dict_with_pattern():
         {'a': 1},
         {'a': 1, 'b': 2},
     ]
-    defs = {
-        Str(Counter({'a', 'b'}), pattern=(AnyChar,)): Int(Counter({1, 2})),
-    }
-    pattern = Dict(data, fields=defs.keys(), pattern=tuple(defs.values()))
+    pattern = Dict(data, pattern=[
+        DictField(
+            Str(FrozenCounter(('a', 'a', 'b')), pattern=(AnyChar,)),
+            Int(FrozenCounter((1, 1, 2)))
+        )])
     assert pattern.lengths.min == 0
     assert pattern.lengths.max == 2
-    assert pattern.fields is not None
-    assert pattern.pattern is not None
     assert str(pattern) == '{str pattern=.: int range=1..2}'
+    assert repr(pattern) == (
+        'Dict(pattern=[DictField(key=Str(pattern=(AnyChar,), values=..., '
+        'unique=False), pattern=Int(values=..., unique=False))])')
 
 
 def test_dict_with_long_pattern():
@@ -100,21 +124,31 @@ def test_dict_with_long_pattern():
         {'num': 3, 'label': 'baz'},
         {'num': 4, 'label': 'quux', 'active': 'f'},
     ]
-    defs = {
-        Choice('num', optional=False): Int(Counter({1, 2, 3, 4})),
-        Choice('label', optional=False): Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None),
-        Choice('active', optional=True): StrRepr(Bool(Counter({False, True})), pattern="'f'|'t'"),
-    }
-    pattern = Dict(data, fields=defs.keys(), pattern=tuple(defs.values()))
+    pattern = Dict(data, pattern=[
+        DictField(
+            Choice('active', optional=True),
+            StrRepr(Bool(Counter({False, True})), pattern="f|t")),
+        DictField(
+            Choice('label', optional=False),
+            Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None)),
+        DictField(Choice('num', optional=False), Int(Counter({1, 2, 3, 4}))),
+    ])
     assert pattern.lengths.min == 2
     assert pattern.lengths.max == 3
-    assert pattern.pattern is not None
     assert str(pattern) == """\
 {
-    'num': int range=1..4,
+    'active'*: str of bool format=f|t,
     'label': str,
-    'active'*: str of bool format='f'|'t'
+    'num': int range=1..4
 }"""
+    assert repr(pattern) == (
+        "Dict(pattern=["
+        "DictField(key=Choice(value='active', optional=True), "
+        "pattern=StrRepr(inner=Bool(values=..., unique=True), pattern='f|t')), "
+        "DictField(key=Choice(value='label', optional=False), "
+        "pattern=Str(pattern=None, values=..., unique=True)), "
+        "DictField(key=Choice(value='num', optional=False), "
+        "pattern=Int(values=..., unique=True))])")
 
 
 def test_tuple():
@@ -126,9 +160,8 @@ def test_tuple():
     pattern = Tuple(data)
     assert pattern.lengths.min == 0
     assert pattern.lengths.max == 3
-    assert pattern.fields is None
-    assert pattern.pattern is None
     assert str(pattern) == '()'
+    assert repr(pattern) == 'Tuple(pattern=None)'
     assert pattern.validate(())
     assert not pattern.validate('foo')
 
@@ -139,21 +172,20 @@ def test_tuple_with_pattern():
         ('bar', 2),
         ('baz', 3),
     ]
-    defs = {
-        Choice(0, False): Str(Counter(['foo', 'bar', 'baz']),
-                              pattern=(AnyChar, AnyChar, AnyChar)),
-        Choice(1, False): Int(Counter([1, 2, 3])),
-    }
-    pattern = Tuple(
-        data,
-        fields=tuple(defs.keys()),
-        pattern=tuple(defs.values())
-    )
+    pattern = Tuple(data, pattern=[
+        TupleField(
+            Choice(0, optional=False),
+            Str(Counter(['foo', 'bar', 'baz']),
+                pattern=(AnyChar, AnyChar, AnyChar))),
+        TupleField(Choice(1, optional=False), Int(Counter([1, 2, 3]))),
+    ])
     assert pattern.lengths.min == 2
     assert pattern.lengths.max == 2
-    assert pattern.fields is not None
-    assert pattern.pattern is not None
     assert str(pattern) == '(str pattern=..., int range=1..3)'
+    assert repr(pattern) == (
+        "Tuple(pattern=["
+        "TupleField(pattern=Str(pattern=(AnyChar, AnyChar, AnyChar), values=..., unique=True)), "
+        "TupleField(pattern=Int(values=..., unique=True))])")
 
 
 def test_tuple_with_long_pattern():
@@ -163,26 +195,27 @@ def test_tuple_with_long_pattern():
         book('J. R. R. Tolkien', 'The Two Towers', '1954-11-11'),
         book('J. R. R. Tolkien', 'The Return of the King', '1955-10-20'),
     ]
-    defs = {
-        Choice('author', False): Str(Counter(t[0] for t in data), pattern=tuple('J. R. R. Tolkien')),
-        Choice('title', False): Str(Counter(t[1] for t in data), pattern=None),
-        Choice('published', False): StrRepr(
-            DateTime(Counter(dt.datetime.strptime(t[2], '%Y-%m-%d') for t in data)),
-            pattern='%Y-%m-%d'
-        )
-    }
-    pattern = List([data], pattern=[
-        Tuple(data, fields=tuple(defs.keys()), pattern=tuple(defs.values()))
-    ])
+    pattern = List([data], pattern=[Tuple(data, pattern=[
+        TupleField(
+            Choice(0, optional=False),
+             Str(Counter(t[0] for t in data), pattern=tuple('J. R. R. Tolkien'))),
+        TupleField(
+            Choice(1, optional=False),
+             Str(Counter(t[1] for t in data), pattern=None)),
+        TupleField(
+            Choice(2, optional=False),
+             StrRepr(
+                 DateTime(Counter(dt.datetime.strptime(t[2], '%Y-%m-%d') for t in data)),
+                 pattern='%Y-%m-%d'
+            ))
+    ])])
     assert pattern.lengths.min == pattern.lengths.max == 3
-    assert pattern.pattern[0].fields is not None
-    assert pattern.pattern[0].pattern is not None
     assert str(pattern) == """\
 [
     (
-        author=str pattern=J. R. R. Tolkien,
-        title=str,
-        published=str of datetime range=1954-07-29 00:00:00..1955-10-20 00:00:00 format=%Y-%m-%d
+        str pattern=J. R. R. Tolkien,
+        str,
+        str of datetime range=1954-07-29 00:00:00..1955-10-20 00:00:00 format=%Y-%m-%d
     )
 ]"""
 
@@ -224,22 +257,24 @@ def test_list_with_long_pattern():
             {'num': 4, 'label': 'quux', 'active': 'f'},
         ]
     ]
-    defs = {
-        Choice('num', optional=False): Int(Counter({1, 2, 3, 4})),
-        Choice('label', optional=False): Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None),
-        Choice('active', optional=True): StrRepr(Bool(Counter({False, True})), pattern="f|t"),
-    }
-    pattern = List(data, pattern=[
-        Dict(data[0], fields=defs.keys(), pattern=tuple(defs.values()))
-    ])
+    pattern = List(data, pattern=[Dict(
+        data[0], pattern=[
+            DictField(
+                Choice('active', optional=True),
+                StrRepr(Bool(Counter({False, True})), pattern="f|t")),
+            DictField(
+                Choice('label', optional=False),
+                Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None)),
+            DictField(
+                Choice('num', optional=False), Int(Counter({1, 2, 3, 4}))),
+        ])])
     assert pattern.lengths.min == pattern.lengths.max == 4
-    assert pattern.pattern is not None
     assert str(pattern) == """\
 [
     {
-        'num': int range=1..4,
+        'active'*: str of bool format=f|t,
         'label': str,
-        'active'*: str of bool format=f|t
+        'num': int range=1..4
     }
 ]"""
 
@@ -381,7 +416,7 @@ def test_url():
         'http://localhost',
         'https://structa.readthedocs.io/',
     ]
-    pattern = URL(True)
+    pattern = URL(Counter(data))
     assert str(pattern) == 'URL'
     assert pattern.validate('https://www.google.com/')
     assert not pattern.validate('foo')
@@ -397,7 +432,7 @@ def test_choices():
 
     data = {'url', 'count', 'active'}
     pattern = Choices({Choice(s, False) for s in data})
-    assert set(str(pattern).strip('{}').split('|')) == data
+    assert set(s.strip(" '") for s in str(pattern).strip('{}').split(',')) == data
     assert pattern.validate('url')
     assert not pattern.validate('foo')
     assert not pattern.validate(1)
@@ -423,3 +458,4 @@ def test_empty():
     assert not pattern.validate('foo')
     assert Empty() == Empty()
     assert Empty() != Value()
+

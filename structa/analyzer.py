@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from functools import partial
 from fractions import Fraction
 from collections import Counter, namedtuple
-from operator import attrgetter
 from itertools import groupby
 
 from dateutil.relativedelta import relativedelta
@@ -17,6 +16,7 @@ from .patterns import (
     Choices,
     DateTime,
     Dict,
+    DictField,
     Empty,
     Float,
     Int,
@@ -146,7 +146,7 @@ class Analyzer:
             # item pattern
             item_pattern = self._analyze(
                 it, path + (pattern,), card=pattern.lengths.card)
-            return pattern._replace(pattern=[item_pattern])
+            return pattern.with_pattern([item_pattern])
         else:
             return pattern
 
@@ -156,67 +156,41 @@ class Analyzer:
             threshold=self.field_threshold,
             card=pattern.lengths.card)
         if isinstance(fields, Choices):
-            # XXX: This relies on the assumption that the iteration order
-            # of sets (or frozensets) is stable; for further discussion:
-            # https://twitter.com/waveform80/status/1328034156450893825
-            return pattern._replace(fields=fields, pattern=tuple(
-                self._analyze(
+            return pattern.with_pattern([
+                DictField(choice, self._analyze(
                     it, path + (pattern, choice),
-                    card=pattern.lengths.card)
-                for choice in fields
-            ))
+                    card=pattern.lengths.card))
+                for choice in sorted(fields)
+            ])
         else:
-            return pattern._replace(fields={fields}, pattern=(
-                self._analyze(
+            return pattern.with_pattern([
+                DictField(fields, self._analyze(
                     it, path + (pattern, fields),
-                    card=pattern.lengths.card),
-            ))
+                    card=pattern.lengths.card))
+            ])
 
     def _analyze_tuple(self, it, path, pattern):
         # Tuples are expected to be heterogeneous, so we attempt to treat
-        # them as a tuple (possibly named) of item patterns
+        # them as a tuple of item patterns
+        # XXX Should this still be separate to _analyze_dict? Perhaps given the
+        # future table-analysis plans...
         fields = self._analyze(
             it, path + (pattern,),
             threshold=self.field_threshold,
             card=pattern.lengths.card)
         if isinstance(fields, Choices):
-            if all(choice.value.name for choice in fields):
-                # Only used namedtuples if absolutely every single tuple in the
-                # extracted sample has names for every column; otherwise just
-                # index by field number
-                names = {
-                    name: sorted(group, key=attrgetter('value.index'))
-                    for name, group in groupby(
-                        sorted(fields, key=attrgetter('value.name')),
-                        key=attrgetter('value.name')
-                    )
-                }
-                fields = tuple(
-                    Choice(group[0].value.name,
-                           any(field.optional for field in group))
-                    for group in sorted(names.values(), key=lambda g: tuple(
-                        field.value.index for field in g))
-                )
-            else:
-                fields = tuple(
-                    Choice(index, any(field.optional for field in group))
-                    for index, group in groupby(
-                        sorted(fields, key=attrgetter('value.index')),
-                        key=attrgetter('value.index')
-                    )
-                )
-            return pattern._replace(fields=fields, pattern=tuple(
-                self._analyze(
-                    it, path + (pattern, field),
-                    card=pattern.lengths.card)
-                for field in fields
-            ))
+            return pattern.with_pattern([
+                TupleField(choice, self._analyze(
+                    it, path + (pattern, choice),
+                    card=pattern.lengths.card))
+                for choice in sorted(fields)
+            ])
         else:
-            return pattern._replace(fields=(fields,), pattern=(
-                self._analyze(
+            return pattern.with_pattern([
+                TupleField(fields, self._analyze(
                     it, path + (pattern, fields),
-                    card=pattern.lengths.card),
-            ))
+                    card=pattern.lengths.card))
+            ])
 
     def _extract(self, it, path):
         """
@@ -252,8 +226,7 @@ class Analyzer:
                 assert False, "invalid key type"
             elif isinstance(head, Choice):
                 try:
-                    yield from self._extract(
-                        it[head.value], tail)
+                    yield from self._extract(it[head.value], tail)
                 except KeyError:
                     assert head.optional, "mandatory key missing"
             elif isinstance(head, Tuple) and head.pattern is None:
@@ -287,23 +260,15 @@ class Analyzer:
         if path:
             # values
             head, *tail = path
-            if not isinstance(head, (Empty, Int, Str, Choice)):
+            if not isinstance(head, (Empty, Int, Choice)):
                 assert False, "invalid column index type"
             elif isinstance(head, Choice):
-                if isinstance(head.value, int):
-                    get_value = lambda: it[head.value]
-                else:
-                    get_value = lambda: getattr(it, head.value)
                 try:
-                    yield from self._extract(get_value(), tail)
-                except (IndexError, AttributeError):
+                    yield from self._extract(it[head.value], tail)
+                except IndexError:
                     assert head.optional, "mandatory field missing"
             else:
-                try:
-                    field_it = zip(it._fields, it)
-                except AttributeError:
-                    field_it = enumerate(it)
-                for field, value in field_it:
+                for field, value in enumerate(it):
                     if head.validate(field):
                         yield from self._extract(value, tail)
                     else:
@@ -312,15 +277,7 @@ class Analyzer:
                             "failed to validate field {field} against {head!r}"
                             .format(field=field, head=head)))
         else:
-            # "fields" (tuple of index, name); note we don't bother with
-            # tracking ids of these for progress tracking
-            try:
-                yield from (
-                    TupleField(index, name)
-                    for index, name in enumerate(it._fields)
-                )
-            except AttributeError:
-                yield from (TupleField(index) for index in range(len(it)))
+            yield from range(len(it))
 
     def _match(self, items, path, *, threshold=None, parent_card=None):
         """
@@ -332,10 +289,7 @@ class Analyzer:
         items = list(items)
         if not items:
             return Empty()
-        elif all(
-                isinstance(item, tuple) and not isinstance(item, TupleField)
-                for item in items
-        ):
+        elif all(isinstance(item, tuple) for item in items):
             return Tuple(items)
         elif all(isinstance(item, list) for item in items):
             # If this is a list of lists, all sub-lists are the same length and
@@ -370,14 +324,6 @@ class Analyzer:
                             Choice(key, optional=count < parent_card)
                             for key, count in sample.items()
                         )
-
-                # If the number of tuple-fields exceeds the choice threshold,
-                # just treat the index (or name) as general data
-                if all(isinstance(value, TupleField) for value in sample):
-                    if all(value.name for value in sample):
-                        sample = Counter(value.name for value in sample)
-                    else:
-                        sample = Counter(value.index for value in sample)
 
                 # The following ordering is important; note that bool's domain
                 # is a subset of int's
@@ -444,7 +390,7 @@ class Analyzer:
         # XXX Add is_base64 (and others?)
         if all(value.startswith(('http://', 'https://')) for value in sample):
             # XXX Refine this to parse URLs
-            return URL(unique=unique)
+            return URL(sample)
         else:
             return Str(sample)
 

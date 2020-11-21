@@ -8,7 +8,7 @@ import pytest
 
 from structa.chars import *
 from structa.patterns import *
-from structa.analyzer import Analyzer, ValidationWarning
+from structa.analyzer import *
 
 
 def frange(start, stop, step=1.0):
@@ -22,6 +22,24 @@ def frange(start, stop, step=1.0):
         yield value
 
 
+def test_flatten():
+    assert list(flatten([1, 2, 3])) == [1, 2, 3, [1, 2, 3]]
+    assert list(flatten([[1, 2], [3, 4], [5, 6]])) == [
+        1, 2, [1, 2], 3, 4, [3, 4], 5, 6, [5, 6], [[1, 2], [3, 4], [5, 6]]]
+    assert list(flatten({1: {2: {3: 4}}})) == [
+        1, 2, 3, 4, {3: 4}, {2: {3: 4}}, {1: {2: {3: 4}}}]
+    assert list(flatten('abc')) == ['abc']
+
+
+def test_analyze_progress():
+    a = Analyzer(bad_threshold=0, track_progress=True)
+    assert a.progress is None
+    a.analyze(list(range(100)))
+    assert a.progress == 1
+    a.analyze({1: 2, 3: 4})
+    assert a.progress == 1
+
+
 def test_analyze_list():
     data = list(range(100))
     assert Analyzer(bad_threshold=0).analyze(data) == List(
@@ -30,84 +48,48 @@ def test_analyze_list():
 
 def test_analyze_tuple():
     data = tuple(range(10))
-    defs = {
-        Choice(i, False): Int(FrozenCounter((i,)))
-        for i in range(10)
-    }
-    assert Analyzer().analyze(data) == Tuple(
+    assert Analyzer(bad_threshold=0).analyze(data) == Tuple(
         sample=[data],
-        fields=tuple(defs.keys()),
-        pattern=tuple(defs.values())
-    )
+        pattern=[
+            TupleField(
+                index=Choice(i, False),
+                pattern=Int(FrozenCounter((i,)))
+            )
+            for i in range(10)
+        ])
     data = tuple(range(100))
     assert Analyzer().analyze(data) == Tuple(
         sample=[data],
-        fields=(Int(FrozenCounter(range(100))),),
-        pattern=(Int(FrozenCounter(data)),))
-
-
-def test_analyze_namedtuple():
-    book = namedtuple('book', ('author', 'title', 'published'))
-    data = [
-        book('J. R. R. Tolkien', 'The Hobbit', '1937-09-21'),
-        book('J. R. R. Tolkien', 'The Fellowship of the Ring', '1954-07-29'),
-        book('J. R. R. Tolkien', 'The Two Towers', '1954-11-11'),
-        book('J. R. R. Tolkien', 'The Return of the King', '1955-10-20'),
-        book('J. R. R. Tolkien', 'The Adventures of Tom Bombadil', '1962-11-22'),
-    ]
-    defs = (
-        (Choice('author', False),
-         Str(Counter(b.author for b in data), pattern=tuple('J. R. R. Tolkien'))),
-        (Choice('title', False),
-         Str(Counter(b.title for b in data), pattern=None)),
-        (Choice('published', False),
-         StrRepr(DateTime(Counter(
-             dt.datetime.strptime(b.published, '%Y-%m-%d')
-             for b in data
-         )), pattern='%Y-%m-%d'))
-    )
-    assert Analyzer(choice_threshold=4).analyze(data) == List(
-        sample=[data],
-        pattern=[Tuple(
-            sample=Counter(data),
-            fields=tuple(i[0] for i in defs),
-            pattern=tuple(i[1] for i in defs),
-        )]
-    )
-
-
-def test_analyze_namedtuple_wide():
-    t = namedtuple('t', tuple('field{:02d}'.format(i) for i in range(50)))
-    data = t(*range(50))
-    assert Analyzer().analyze(data) == Tuple(
-        sample=[data],
-        fields=(Str(Counter(t._fields), pattern=tuple('field') + (DecDigit, DecDigit)),),
-        pattern=(Int(Counter(data)),))
+        pattern=[
+            TupleField(
+                index=Int(FrozenCounter(range(100))),
+                pattern=Int(FrozenCounter(data)))
+        ])
 
 
 def test_analyze_dict():
     data = {chr(ord('A') + n): n for n in range(50)}
     assert Analyzer(bad_threshold=0).analyze(data) == Dict(
         sample=[data],
-        fields={Str(FrozenCounter(data.keys()), pattern=(AnyChar,))},
-        pattern=(Int(FrozenCounter(data.values())),)
-    )
+        pattern=[
+            DictField(
+                key=Str(FrozenCounter(data.keys()), pattern=(AnyChar,)),
+                pattern=Int(FrozenCounter(data.values()))
+            )
+        ])
 
 
 def test_analyze_dict_optional_choices():
     data = [{'foo': 1, 'bar': 2}] * 999
     data.append({'foo': 1})
-    defs = {
-        Choice('foo', False): Int(Counter((1,) * 1000)),
-        Choice('bar', True): Int(Counter((2,) * 999)),
-    }
     assert Analyzer(bad_threshold=2/100).analyze(data) == List(
         sample=[data], pattern=[Dict(
             sample=data,
-            fields=Choices(defs.keys()),
-            pattern=tuple(defs[key] for key in Choices(defs.keys())),
-        )]
-    )
+            pattern=[
+                DictField(Choice('bar', True), Int(Counter((2,) * 999))),
+                DictField(Choice('foo', False), Int(Counter((1,) * 1000))),
+            ]
+        )])
 
 
 def test_analyze_dict_invalid_choices():
@@ -117,30 +99,30 @@ def test_analyze_dict_invalid_choices():
         assert Analyzer(bad_threshold=1/100).analyze(data) == List(
             sample=[data], pattern=[Dict(
                 sample=data,
-                fields={Str(Counter(k for d in data[:-1] for k in d),
-                            pattern=(AnyChar,))},
-                pattern=(Int(Counter(v for d in data[:-1] for v in d.values())),)
-            )]
-        )
+                pattern=[
+                    DictField(
+                        Str(Counter(k for d in data[:-1] for k in d), pattern=(AnyChar,)),
+                        Int(Counter(v for d in data[:-1] for v in d.values()))
+                    )
+                ]
+            )])
 
 
 def test_analyze_dict_of_dicts():
     data = {n: {'foo': n, 'bar': n} for n in range(99)}
-    fields = Choices(Choice(s, False) for s in data[0])
     assert Analyzer().analyze(data) == Dict(
         sample=[data],
-        fields={Int(Counter(data.keys()))},
-        pattern=(
-            Dict(
-                sample=data.values(),
-                fields=fields,
-                pattern=(
-                    Int(Counter(range(99))),
-                    Int(Counter(range(99))),
-                )
-            ),
-        )
-    )
+        pattern=[
+            DictField(
+                Int(Counter(data.keys())),
+                Dict(
+                    sample=data.values(),
+                    pattern=[
+                        DictField(Choice('bar', False), Int(Counter(range(99)))),
+                        DictField(Choice('foo', False), Int(Counter(range(99)))),
+                    ])
+            )])
+
 
 
 def test_analyze_dict_keyed_by_tuple():
@@ -148,19 +130,18 @@ def test_analyze_dict_keyed_by_tuple():
         (n, n + 1): n + 2
         for n in range(50)
     }
-    defs = {
-        Choice(0, False): Int(Counter(range(50))),
-        Choice(1, False): Int(Counter(range(1, 51))),
-    }
     assert Analyzer().analyze(data) == Dict(
         sample=[data],
-        fields={Tuple(
-            sample=list(data.keys()),
-            fields=tuple(defs.keys()),
-            pattern=tuple(defs.values()),
-        )},
-        pattern=(Int(Counter(range(2, 52))),)
-    )
+        pattern=[
+            DictField(
+                Tuple(
+                    sample=list(data.keys()),
+                    pattern=[
+                        TupleField(Choice(0, False), Int(Counter(range(50)))),
+                        TupleField(Choice(1, False), Int(Counter(range(1, 51)))),
+                    ]),
+                Int(Counter(range(2, 52))))
+        ])
 
 
 def test_analyze_tuple_optional_fields():
@@ -173,16 +154,11 @@ def test_analyze_tuple_optional_fields():
         sample=[data],
         pattern=[Tuple(
             sample=data,
-            fields=(
-                Choice(0, False),
-                Choice(1, True),
-            ),
-            pattern=(
-                Int(Counter(range(101))),
-                Int(Counter(range(1, 101))),
-            )
-        )]
-    )
+            pattern=[
+                TupleField(Choice(0, False), Int(Counter(range(101)))),
+                TupleField(Choice(1, True), Int(Counter(range(1, 101)))),
+            ]
+        )])
 
 
 def test_analyze_namedtuples_optional_fields():
@@ -197,43 +173,12 @@ def test_analyze_namedtuples_optional_fields():
         sample=[data],
         pattern=[Tuple(
             sample=data,
-            fields=(
-                Choice('a', False),
-                Choice('b', False),
-                Choice('c', True),
-            ),
-            pattern=(
-                Int(Counter(range(101))),
-                Int(Counter(range(1, 102))),
-                Int(Counter(range(2, 102))),
-            )
-        )]
-    )
-
-
-def test_analyze_tuple_and_namedtuple():
-    t = namedtuple('t1', 'a b c')
-    data = [
-        t(n, n + 1, n + 2)
-        for n in range(100)
-    ]
-    data.append((100, 101, 102))
-    assert Analyzer().analyze(data) == List(
-        sample=[data],
-        pattern=[Tuple(
-            sample=data,
-            fields=(
-                Choice(0, True),
-                Choice(1, True),
-                Choice(2, True),
-            ),
-            pattern=(
-                Int(Counter(range(101))),
-                Int(Counter(range(1, 102))),
-                Int(Counter(range(2, 103))),
-            )
-        )]
-    )
+            pattern=[
+                TupleField(Choice(0, False), Int(Counter(range(101)))),
+                TupleField(Choice(1, False), Int(Counter(range(1, 102)))),
+                TupleField(Choice(2, True), Int(Counter(range(2, 102)))),
+            ]
+        )])
 
 
 def test_analyze_lists_as_tuples():
@@ -245,18 +190,12 @@ def test_analyze_lists_as_tuples():
         sample=[data],
         pattern=[Tuple(
             sample=data,
-            fields=(
-                Choice(0, False),
-                Choice(1, False),
-                Choice(2, False),
-            ),
-            pattern=(
-                Int(Counter(range(100))),
-                Int(Counter(range(1, 101))),
-                Int(Counter(range(2, 102))),
-            )
-        )]
-    )
+            pattern=[
+                TupleField(Choice(0, False), Int(Counter(range(100)))),
+                TupleField(Choice(1, False), Int(Counter(range(1, 101)))),
+                TupleField(Choice(2, False), Int(Counter(range(2, 102)))),
+            ]
+        )])
 
 
 def test_analyze_bools():
@@ -501,7 +440,7 @@ def test_analyze_url_list():
     ]
     assert Analyzer(choice_threshold=5, bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[URL(unique=True)])
+        pattern=[URL(FrozenCounter(data))])
 
 
 def test_analyze_hashes():

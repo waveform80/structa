@@ -184,58 +184,62 @@ class Analyzer(analyzer.Analyzer):
 
 
 class Progress:
-    def __init__(self, output=sys.stderr, show_bar=True, show_percent=True,
+    def __init__(self, stream=sys.__stderr__, show_bar=True, show_percent=True,
                  show_eta=True, show_spinner=False):
-        self.term = Terminal()
-        self.output = output
-        self._show_bar = show_bar
+        self.term = Terminal(stream=stream)
+        self._show_bar = show_bar and self.term.is_a_tty
         self._show_percent = show_percent
         self._show_eta = show_eta
-        self._show_spinner = show_spinner
+        self._show_spinner = show_spinner and self.term.is_a_tty
         self._started = None
         self._position = 0.0
         self._last_spinner = '-'
 
     def hide(self):
-        self.output.write(self.term.clear_bol + self.term.move_x(0))
+        if self.term.is_a_tty:
+            self.term.stream.write(self.term.clear_bol + self.term.move_x(0))
 
     def show(self):
-        eta = pct = bar = spin = ''
-        if self._show_eta and self._started is not None and self._position > 0.1:
-            eta = ' ETA {eta} '.format(
-                eta=humanize.naturaldelta(
-                    (1 - self._position) * (datetime.now() - self._started)
-                    / self._position))
-        if self._show_percent:
-            pct = ' {p:4.1f}% '.format(p=self._position * 100)
-        if self._show_spinner:
-            self._last_spinner = {
-                '|': '/',
-                '/': '-',
-                '-': '\\',
-                '\\': '|',
-            }[self._last_spinner]
-            spin = ' ' + self._last_spinner
-        if self._show_bar:
-            size = self.term.width - len(pct) - len(eta) - len(spin) - 3
-            bar = '[{bar:.<{size}}]'.format(
-                size=size, bar='#' * int(size * self._position))
-        self.output.write(self.term.move_x(0))
-        self.output.write(self.term.black_on_green)
-        self.output.write(pct)
-        self.output.write(eta)
-        self.output.write(self.term.normal)
-        self.output.write(bar)
-        self.output.write(spin)
-        self.output.flush()
+        if self.term.is_a_tty:
+            eta = pct = bar = spin = ''
+            if self._show_eta and self._started is not None and self._position > 0.1:
+                eta = ' ETA {eta} '.format(
+                    eta=humanize.naturaldelta(
+                        (1 - self._position) * (datetime.now() - self._started)
+                        / self._position))
+            if self._show_percent:
+                pct = ' {p:4.1f}% '.format(p=self._position * 100)
+            if self._show_spinner:
+                self._last_spinner = {
+                    '|': '/',
+                    '/': '-',
+                    '-': '\\',
+                    '\\': '|',
+                }[self._last_spinner]
+                spin = ' ' + self._last_spinner
+            if self._show_bar:
+                size = self.term.width - len(pct) - len(eta) - len(spin) - 3
+                bar = '[{bar:.<{size}}]'.format(
+                    size=size, bar='#' * int(size * self._position))
+            self.term.stream.write(self.term.move_x(0))
+            self.term.stream.write(self.term.black_on_green)
+            self.term.stream.write(pct)
+            self.term.stream.write(eta)
+            self.term.stream.write(self.term.normal)
+            self.term.stream.write(bar)
+            self.term.stream.write(spin)
+            self.term.stream.flush()
 
     def message(self, msg):
         """
-        Output the message *s* to the :attr:`output`.
+        Output the message *s* to the output stream.
         """
         self.hide()
-        self.output.write(msg)
-        self.output.write('\n')
+        if self.term.stream:
+            self.term.stream.write(msg)
+            self.term.stream.write('\n')
+            if not self.term.is_a_tty:
+                self.term.stream.flush()
         self.show()
 
     @property
@@ -262,7 +266,8 @@ class Progress:
 
     def __exit__(self, *exc):
         self.hide()
-        self.output.flush()
+        if self.term.stream:
+            self.term.stream.flush()
 
 
 def detect_encoding(config):
@@ -312,17 +317,32 @@ def detect_format(config):
                 field_delims = re.compile('[,; \\t]')
                 csv_score = yaml_score = 0
                 for line in sample:
-                    if line.startswith('#') or line[:1] in (' -'):
-                        # YAML comments, indented lines, or "-" prefixed items
-                        # all of which are atypical in CSV
-                        yaml_score += 1
-                    elif (
-                        len(quote_delims.findall(line)) > 1 and
-                        len(field_delims.findall(line)) > 0
+                    if (
+                        line.startswith(('#', ' ', '-')) or
+                        line.endswith(':')
                     ):
-                        # Both field and quote delimiters found in the line.
-                        # Also possible for YAML (hence elif) but
-                        # pre-ponderance should indicate CSV
+                        # YAML comments, indented lines, "-" prefixed items
+                        # and colon suffixes are all atypical in CSV and
+                        # strong indicators of YAML
+                        yaml_score += 2
+                        continue
+                    has_field_delims = bool(set(line) & set(',; \\t'))
+                    quote_delims = max(
+                        line.count(delim) for delim in ('"', "'"))
+                    if has_field_delims and quote_delims and not (
+                        quote_delims % 2):
+                        # Both field and quote delimiters found in the line and
+                        # quote delimiters are paired. Also possible for YAML
+                        # (hence elif) but the presence of paired quotes is a
+                        # strong indicator of CSV
+                        csv_score += 2
+                    elif ':' in line:
+                        # No quoted, field-delimited strings, but line contains
+                        # a colon - weaker indicator of YAML
+                        yaml_score += 1
+                    elif has_field_delims:
+                        # No quote delimiters, but field delimiters are present
+                        # with no colon in the line - weaker indicator of CSV
                         csv_score += 1
                 if yaml_score > csv_score:
                     config.format = 'yaml'
@@ -352,9 +372,9 @@ def detect_format(config):
 
 def load_data(config, progress):
     detect_encoding(config)
-    progress.message('Detected encoding {config.encoding}'.format(config=config))
+    progress.message('Guessed encoding {config.encoding}'.format(config=config))
     detect_format(config)
-    progress.message('Detected format {config.format}'.format(config=config))
+    progress.message('Guessed format {config.format}'.format(config=config))
     progress.message('Reading file {config.file.name}'.format(config=config))
     data = config.sample + config.file.read()
     progress.message('Decoding file')

@@ -1,7 +1,8 @@
 from math import log
+from copy import copy
 from datetime import datetime
 from textwrap import indent, shorten
-from functools import partial
+from functools import partial, total_ordering
 from collections import namedtuple, Counter
 from collections.abc import Mapping
 
@@ -127,36 +128,90 @@ def try_conversion(sample, conversion, threshold=0):
         return result
 
 
-class ContainerStats(namedtuple('_ContainerStats', (
-        'card', 'min', 'max', 'median'))):
+def render_repr(self, **override):
+    args = (
+        arg
+        for cls in self.__class__.mro() if cls is not object
+        for arg in cls.__slots__
+    )
+    return '{self.__class__.__name__}({args})'.format(
+        self=self, args=', '.join(
+            '{arg}={value}'.format(
+                arg=arg, value=override.get(arg, repr(getattr(self, arg))))
+            for arg in args
+            if arg not in override
+            or override[arg] is not None))
+
+
+# NOTE: Once oldstable is 3.7, would be nice to change all these to dataclasses
+# or possibly typing.NamedTuple instances?
+
+
+class ContainerStats:
     """
     Stores the cardinality, minimum, maximum, and (high) median of the lengths
     of sampled containers (lists, dicts, etc.)
     """
-    __slots__ = ()
+    __slots__ = ('card', 'min', 'max', 'median')
+
+    def __init__(self, card, min, max, median):
+        super().__init__()
+        self.card = card
+        self.min = min
+        self.max = max
+        self.median = median
+
+    def __eq__(self, other):
+        if isinstance(other, ContainerStats):
+            return (
+                self.card == other.card and
+                self.min == other.min and
+                self.max == other.max and
+                self.median == other.median)
+        return NotImplemented
+
+    def __repr__(self):
+        return render_repr(self)
 
     @classmethod
     def from_sample(cls, values):
         keys = sorted(len(value) for value in values)
         assert len(keys) > 0
-        return super().__new__(
-            cls, len(keys), keys[0], keys[-1], keys[len(keys) // 2])
+        return cls(
+            len(keys), keys[0], keys[-1], keys[len(keys) // 2])
 
 
-class ScalarStats(namedtuple('_ScalarStats', (
-        'sample', 'card', 'min', 'max', 'median'))):
+class ScalarStats(ContainerStats):
     """
     Stores cardinality, minimum, maximum, and (high) median of a sampling of
     numeric values (or lengths of strings), along with top and bottom 10
     samples (including count) by popularity.
     """
-    __slots__ = ()
+    __slots__ = ('sample',)
 
-    @classmethod
-    def from_sample(cls, sample):
+    def __init__(self, sample, card, min, max, median):
         if not isinstance(sample, FrozenCounter):
             assert isinstance(sample, Counter)
             sample = FrozenCounter.from_counter(sample)
+        super().__init__(card, min, max, median)
+        self.sample = sample
+
+    def __repr__(self):
+        return render_repr(self, sample='...')
+
+    def __eq__(self, other):
+        if isinstance(other, ScalarStats):
+            return (
+                self.sample == other.sample and
+                self.card == other.card and
+                self.min == other.min and
+                self.max == other.max and
+                self.median == other.median)
+        return NotImplemented
+
+    @classmethod
+    def from_sample(cls, sample):
+        assert isinstance(sample, (Counter, FrozenCounter))
         assert sample
         keys = sorted(sample)
         card = sum(sample.values())
@@ -165,8 +220,7 @@ class ScalarStats(namedtuple('_ScalarStats', (
             index -= sample[median]
             if index < 0:
                 break
-        return super().__new__(cls, FrozenCounter.from_counter(sample),
-                               card, keys[0], keys[-1], median)
+        return cls(sample, card, keys[0], keys[-1], median)
 
     @classmethod
     def from_lengths(cls, values):
@@ -185,24 +239,60 @@ class ScalarStats(namedtuple('_ScalarStats', (
             return count == 1
 
 
-class Dict(namedtuple('_Dict', ('lengths', 'fields', 'pattern'))):
+class Pattern:
     __slots__ = ()
 
-    def __new__(cls, sample, fields=None, pattern=None):
-        return super().__new__(cls, ContainerStats.from_sample(sample),
-                               fields, pattern)
+    def __repr__(self):
+        return render_repr(self)
+
+    def __eq__(self, other):
+        # NOTE: Eventually we expect compare to grow options for tweaking the
+        # comparison; the __eq__ method will simply call compare with defaults
+        if isinstance(other, Pattern):
+            return self.compare(other)
+        return NotImplemented
+
+    def compare(self, other):
+        # We compare __class__ precisely because a Dict cannot match a Tuple,
+        # etc.
+        return self.__class__ is other.__class__
+
+
+class Container(Pattern):
+    __slots__ = ('lengths', 'pattern')
+
+    def __init__(self, sample, pattern=None):
+        super().__init__()
+        self.lengths = ContainerStats.from_sample(sample)
+        self.pattern = pattern
+
+    def __repr__(self):
+        return render_repr(self, lengths=None)
+
+    def with_pattern(self, pattern):
+        result = copy(self)
+        result.pattern = pattern
+        return result
+
+    def compare(self, other):
+        # The ContainerStats lengths attribute is ignored as it has no bearing
+        # on the actual structure itself
+        return (
+            super().compare(other) and
+            all(a.compare(b) for a, b in zip(self.pattern, other.pattern)))
+
+
+class Dict(Container):
+    __slots__ = ()
 
     def __str__(self):
         if self.pattern is None:
             return '{}'
         else:
-            elems = [
-                '{key}: {value}'.format(key=key, value=value)
-                for key, value in zip(self.fields, self.pattern)
-            ]
-            result = ', '.join(elems)
+            fields = [str(field) for field in self.pattern]
+            result = ', '.join(fields)
             if '\n' in result or len(result) > 60:
-                result = ',\n'.join(elems)
+                result = ',\n'.join(fields)
                 return '{{\n{result}\n}}'.format(result=indent(result, '    '))
             else:
                 return '{{{result}}}'.format(result=result)
@@ -210,53 +300,73 @@ class Dict(namedtuple('_Dict', ('lengths', 'fields', 'pattern'))):
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
         # TypeError or ValueError accordingly (bad type or just wrong range)
+        # XXX Also needs refining for keys present
         return isinstance(value, dict)
 
 
-class Tuple(namedtuple('_Tuple', ('lengths', 'fields', 'pattern'))):
-    __slots__ = ()
+class DictField(Pattern):
+    __slots__ = ('key', 'pattern')
 
-    def __new__(cls, sample, fields=None, pattern=None):
-        return super().__new__(cls, ContainerStats.from_sample(sample),
-                               fields, pattern)
+    def __init__(self, key, pattern=None):
+        super().__init__()
+        self.key = key
+        self.pattern = pattern
+
+    def __str__(self):
+        return '{self.key}: {self.pattern}'.format(self=self)
+
+    def compare(self, other):
+        return (
+            super().compare(other) and
+            self.key.compare(other.key) and
+            self.pattern.compare(other.pattern))
+
+
+class Tuple(Container):
+    __slots__ = ()
 
     def __str__(self):
         if self.pattern is None:
             return '()'
         else:
-            elems = [
-                (
-                    '{field.value}={value}'
-                    if isinstance(field, Choice)
-                    and isinstance(field.value, str) else
-                    '{value}'
-                ).format(field=field, value=value)
-                for field, value in zip(self.fields, self.pattern)
-            ]
-            result = ', '.join(elems)
+            fields = [str(field) for field in self.pattern]
+            result = ', '.join(fields)
             if '\n' in result or len(result) > 60:
-                result = ',\n'.join(elems)
+                result = ',\n'.join(fields)
                 return '(\n{result}\n)'.format(result=indent(result, '    '))
             else:
                 return '({result})'.format(result=result)
 
     def validate(self, value):
+        # XXX Make validate a procedure which raises a validation exception;
+        # TypeError or ValueError accordingly (bad type or just wrong range)
+        # XXX Also needs refining for fields present
         return isinstance(value, tuple)
 
 
-class TupleField(namedtuple('_TupleField', ('index', 'name'))):
+class TupleField(Pattern):
+    __slots__ = ('index', 'pattern')
+
+    def __init__(self, index, pattern=None):
+        super().__init__()
+        self.index = index
+        self.pattern = pattern
+
+    def __str__(self):
+        return str(self.pattern)
+
+    def __repr__(self):
+        return render_repr(self, index=None)
+
+    def compare(self, other):
+        return (
+            super().compare(other) and
+            self.index.compare(other.index) and
+            self.pattern.compare(other.pattern))
+
+
+class List(Container):
     __slots__ = ()
-
-    def __new__(cls, index, name=''):
-        return super().__new__(cls, index, name)
-
-
-class List(namedtuple('_List', ('lengths', 'pattern'))):
-    __slots__ = ()
-
-    def __new__(cls, sample, pattern=None):
-        return super().__new__(cls, ContainerStats.from_sample(sample),
-                               pattern)
 
     def __str__(self):
         if self.pattern is None:
@@ -274,13 +384,143 @@ class List(namedtuple('_List', ('lengths', 'pattern'))):
         return isinstance(value, list)
 
 
-class Str(namedtuple('_Str', ('values', 'lengths', 'pattern', 'unique'))):
+class Scalar(Pattern):
+    __slots__ = ('values', 'unique')
+
+    def __init__(self, sample):
+        super().__init__()
+        self.values = ScalarStats.from_sample(sample)
+        self.unique = self.values.unique
+
+    def __repr__(self):
+        return render_repr(self, values='...')
+
+
+class Bool(Scalar):
     __slots__ = ()
 
-    def __new__(cls, sample, pattern=None):
-        values = ScalarStats.from_sample(sample)
-        lengths = ScalarStats.from_lengths(sample)
-        return super().__new__(cls, values, lengths, pattern, values.unique)
+    def __str__(self):
+        return 'bool'
+
+    @classmethod
+    def from_strings(cls, iterable, pattern, bad_threshold=0):
+        false, true = pattern.split('|', 1)
+        return StrRepr(
+            cls(
+                try_conversion(
+                    iterable, partial(to_bool, false=false, true=true),
+                    bad_threshold)
+            ),
+            pattern='{false}|{true}'.format(false=false, true=true)
+        )
+
+    def validate(self, value):
+        return (
+            isinstance(value, bool) or
+            (isinstance(value, int) and value in (0, 1))
+        )
+
+
+class Int(Scalar):
+    __slots__ = ()
+
+    @classmethod
+    def from_strings(cls, iterable, pattern, bad_threshold=0):
+        base = {
+            'o': 8,
+            'd': 10,
+            'x': 16,
+        }[pattern]
+        return StrRepr(
+            cls(try_conversion(
+                iterable, partial(int, base=base), bad_threshold)),
+            pattern=pattern)
+
+    def __str__(self):
+        return 'int range={min}..{max}'.format(
+            min=format_int(self.values.min),
+            max=format_int(self.values.max)
+        )
+
+    def validate(self, value):
+        return (
+            isinstance(value, int) and
+            self.values.min <= value <= self.values.max
+        )
+
+
+class Float(Scalar):
+    __slots__ = ()
+
+    @classmethod
+    def from_strings(cls, iterable, pattern, bad_threshold=0):
+        return StrRepr(
+            cls(try_conversion(iterable, float, bad_threshold)),
+            pattern=pattern)
+
+    def __str__(self):
+        return 'float range={min:.1f}..{max:.1f}'.format(
+            min=self.values.min, max=self.values.max)
+
+    def validate(self, value):
+        return (
+            isinstance(value, float) and
+            self.values.min <= value <= self.values.max
+        )
+
+
+class DateTime(Scalar):
+    __slots__ = ()
+
+    @classmethod
+    def from_strings(cls, iterable, pattern, bad_threshold=0):
+        conv = lambda s: datetime.strptime(s, pattern)
+        return StrRepr(
+            cls(try_conversion(iterable, conv, bad_threshold)),
+            pattern=pattern)
+
+    @classmethod
+    def from_numbers(cls, pattern):
+        if isinstance(pattern, StrRepr):
+            num_pattern = pattern.inner
+        else:
+            num_pattern = pattern
+        dt_counter = Counter()
+        for value, count in num_pattern.values.sample.items():
+            dt_counter[datetime.fromtimestamp(value)] = count
+        result = NumRepr(
+            cls(dt_counter),
+            pattern=int if isinstance(num_pattern, Int) else float)
+        if isinstance(pattern, StrRepr):
+            return pattern.with_inner(result)
+        else:
+            return result
+
+    def __str__(self):
+        return 'datetime range={min}..{max}'.format(
+            min=self.values.min.replace(microsecond=0),
+            max=self.values.max.replace(microsecond=0))
+
+    def validate(self, value):
+        return (
+            isinstance(value, datetime) and
+            self.values.min <= value <= self.values.max
+        )
+
+
+class Str(Scalar):
+    __slots__ = ('lengths', 'pattern')
+
+    def __init__(self, sample, pattern=None):
+        super().__init__(sample)
+        self.lengths = ScalarStats.from_lengths(sample)
+        self.pattern = pattern
+
+    def compare(self, other):
+        return super().compare(other) and self.pattern == other.pattern
+
+    def __repr__(self):
+        return render_repr(self, lengths=None, values='...')
 
     def __str__(self):
         if self.pattern is None:
@@ -304,7 +544,7 @@ class Str(namedtuple('_Str', ('values', 'lengths', 'pattern', 'unique'))):
                         continue
                     else:
                         return False
-                elif issubclass(c2, Digit):
+                elif isinstance(c2, Digit):
                     if c1 in c2.chars:
                         continue
                     else:
@@ -312,11 +552,26 @@ class Str(namedtuple('_Str', ('values', 'lengths', 'pattern', 'unique'))):
         return result
 
 
-class StrRepr(namedtuple('_StrRepr', ('inner', 'pattern'))):
-    __slots__ = ()
+class Repr(Pattern):
+    __slots__ = ('inner', 'pattern')
 
-    def __new__(cls, inner, pattern=None):
-        return super().__new__(cls, inner, pattern)
+    def __init__(self, inner, pattern=None):
+        super().__init__()
+        self.inner = inner
+        self.pattern = pattern
+
+    def with_inner(self, inner):
+        return self.__class__(inner, self.pattern)
+
+    def compare(self, other):
+        return (
+            isinstance(other, Repr) and
+            self.inner.compare(other.inner) and
+            self.pattern == other.pattern)
+
+
+class StrRepr(Repr):
+    __slots__ = ()
 
     def __str__(self):
         return 'str of {self.inner} format={self.pattern}'.format(self=self)
@@ -350,11 +605,8 @@ class StrRepr(namedtuple('_StrRepr', ('inner', 'pattern'))):
             return self.inner.validate(value)
 
 
-class NumRepr(namedtuple('_NumRepr', ('inner', 'pattern'))):
+class NumRepr(Repr):
     __slots__ = ()
-
-    def __new__(cls, inner, pattern=None):
-        return super().__new__(cls, inner, pattern)
 
     def __str__(self):
         if self.pattern is int:
@@ -379,145 +631,8 @@ class NumRepr(namedtuple('_NumRepr', ('inner', 'pattern'))):
             return self.inner.validate(value)
 
 
-class Int(namedtuple('_Int', ('values', 'unique'))):
+class URL(Str):
     __slots__ = ()
-
-    def __new__(cls, sample):
-        values = ScalarStats.from_sample(sample)
-        return super().__new__(cls, values, values.unique)
-
-    @classmethod
-    def from_strings(cls, iterable, pattern, bad_threshold=0):
-        base = {
-            'o': 8,
-            'd': 10,
-            'x': 16,
-        }[pattern]
-        return StrRepr(
-            cls(try_conversion(
-                iterable, partial(int, base=base), bad_threshold)),
-            pattern=pattern)
-
-    def __str__(self):
-        return 'int range={min}..{max}'.format(
-            min=format_int(self.values.min),
-            max=format_int(self.values.max)
-        )
-
-    def validate(self, value):
-        return (
-            isinstance(value, int) and
-            self.values.min <= value <= self.values.max
-        )
-
-
-class Float(namedtuple('_Float', ('values', 'unique'))):
-    __slots__ = ()
-
-    def __new__(cls, sample):
-        values = ScalarStats.from_sample(sample)
-        return super().__new__(cls, values, values.unique)
-
-    @classmethod
-    def from_strings(cls, iterable, pattern, bad_threshold=0):
-        return StrRepr(
-            cls(try_conversion(iterable, float, bad_threshold)),
-            pattern=pattern)
-
-    def __str__(self):
-        return 'float range={min:.1f}..{max:.1f}'.format(
-            min=self.values.min, max=self.values.max)
-
-    def validate(self, value):
-        return (
-            isinstance(value, float) and
-            self.values.min <= value <= self.values.max
-        )
-
-
-class DateTime(namedtuple('_DateTime', ('values', 'unique'))):
-    __slots__ = ()
-
-    def __new__(cls, sample):
-        values = ScalarStats.from_sample(sample)
-        return super().__new__(cls, values, values.unique)
-
-    @classmethod
-    def from_strings(cls, iterable, pattern, bad_threshold=0):
-        conv = lambda s: datetime.strptime(s, pattern)
-        return StrRepr(
-            cls(try_conversion(iterable, conv, bad_threshold)),
-            pattern=pattern)
-
-    @classmethod
-    def from_numbers(cls, pattern):
-        if isinstance(pattern, StrRepr):
-            num_pattern = pattern.inner
-        else:
-            num_pattern = pattern
-        result = NumRepr(
-            super().__new__(cls, ScalarStats(
-                FrozenCounter(
-                    datetime.fromtimestamp(value)
-                    for value in num_pattern.values.sample.elements()
-                ),
-                num_pattern.values.card,
-                datetime.fromtimestamp(num_pattern.values.min),
-                datetime.fromtimestamp(num_pattern.values.max),
-                datetime.fromtimestamp(num_pattern.values.median),
-            ), num_pattern.values.unique),
-            pattern=int if isinstance(num_pattern, Int) else float)
-        if isinstance(pattern, StrRepr):
-            return pattern._replace(inner=result)
-        else:
-            return result
-
-    def __str__(self):
-        return 'datetime range={min}..{max}'.format(
-            min=self.values.min.replace(microsecond=0),
-            max=self.values.max.replace(microsecond=0))
-
-    def validate(self, value):
-        return (
-            isinstance(value, datetime) and
-            self.values.min <= value <= self.values.max
-        )
-
-
-class Bool(namedtuple('_Bool', ('values',))):
-    __slots__ = ()
-
-    def __new__(cls, sample):
-        return super().__new__(cls, ScalarStats.from_sample(sample))
-
-    def __str__(self):
-        return 'bool'
-
-    @classmethod
-    def from_strings(cls, iterable, pattern, bad_threshold=0):
-        false, true = pattern.split('|', 1)
-        return StrRepr(
-            cls(
-                try_conversion(
-                    iterable, partial(to_bool, false=false, true=true),
-                    bad_threshold)
-            ),
-            pattern='{false}|{true}'.format(false=false, true=true)
-        )
-
-    def validate(self, value):
-        return (
-            isinstance(value, bool) or
-            (isinstance(value, int) and value in (0, 1))
-        )
-
-
-class URL(namedtuple('_URL', ('unique',))):
-    __slots__ = ()
-
-    def __new__(cls, unique=False):
-        # XXX Analyze sample for common scheme/host/path-patterns
-        return super().__new__(cls, unique)
 
     def __str__(self):
         return 'URL'
@@ -525,7 +640,7 @@ class URL(namedtuple('_URL', ('unique',))):
     def validate(self, value):
         # TODO use urlparse (or split?) and check lots more schemes
         return (
-            isinstance(value, str) and
+            super().validate(value) and
             value.startswith(('http://', 'https://'))
         )
 
@@ -536,7 +651,7 @@ class Choices(set):
             return str(next(iter(self)).value)
         else:
             choices = shorten(
-                '|'.join(str(choice.value) for choice in self),
+                ', '.join(str(choice.value) for choice in self),
                 width=60, placeholder='...')
             return '{{{choices}}}'.format(choices=choices)
 
@@ -544,8 +659,31 @@ class Choices(set):
         return any(choice.validate(value) for choice in self)
 
 
-class Choice(namedtuple('_Choice', ('value', 'optional'))):
-    __slots__ = ()
+@total_ordering
+class Choice(Pattern):
+    __slots__ = ('value', 'optional')
+
+    def __init__(self, value, optional=False):
+        super().__init__()
+        self.value = value
+        self.optional = optional
+
+    def compare(self, other):
+        # We deliberately exclude *optional* from consideration here; the
+        # only time a Choice is compared is during common sub-tree
+        # elimination where a key might be mandatory in one sub-set but
+        # optional in another
+        return super().compare(other) and self.value == other.value
+
+    def __lt__(self, other):
+        if isinstance(other, Choice):
+            return self.value < other.value
+        return NotImplemented
+
+    def __hash__(self):
+        # We define a hash to permit Choice to be present in a Choices
+        # instance; note that this implies a Choice is effectively immutable
+        return hash((self.value,))
 
     def __str__(self):
         return repr(self.value) + ('*' if self.optional else '')
@@ -554,10 +692,11 @@ class Choice(namedtuple('_Choice', ('value', 'optional'))):
         return value == self.value
 
 
-class Value:
+class Value(Pattern):
     __slots__ = ()
 
     def __new__(cls):
+        # This is a singleton class; all instances are the same
         try:
             return _value
         except NameError:
@@ -573,10 +712,11 @@ class Value:
         return True
 
 
-class Empty:
+class Empty(Pattern):
     __slots__ = ()
 
     def __new__(cls):
+        # This is a singleton class; all instances are the same
         try:
             return _empty
         except NameError:
