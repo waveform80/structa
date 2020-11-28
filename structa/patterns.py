@@ -1,150 +1,13 @@
-from math import log
 from copy import copy
 from datetime import datetime
 from textwrap import indent, shorten
 from functools import partial, total_ordering
-from collections import namedtuple, Counter
 from collections.abc import Mapping
 
 from .chars import Digit, AnyChar
-
-
-class FrozenCounter(Mapping):
-    def __init__(self, it):
-        self._counter = Counter(it)
-        self._hash = None
-
-    @classmethod
-    def from_counter(cls, counter):
-        if isinstance(counter, Counter):
-            self = cls(())
-            self._counter = counter.copy()
-            return self
-        elif isinstance(counter, FrozenCounter):
-            # It's frozen; no need to go recreating stuff
-            return counter
-        else:
-            assert False
-
-    def most_common(self, n=None):
-        return self._counter.most_common(n)
-
-    def elements(self):
-        return self._counter.elements()
-
-    def __iter__(self):
-        return iter(self._counter)
-
-    def __len__(self):
-        return len(self._counter)
-
-    def __getitem__(self, key):
-        return self._counter[key]
-
-    def __repr__(self):
-        return "{self.__class__.__name__}({self._counter})".format(self=self)
-
-    def __hash__(self):
-        if self._hash is None:
-            self._hash = hash((frozenset(self), frozenset(self.values())))
-        return self._hash
-
-    def __eq__(self, other):
-        return self._counter == other
-
-    def __ne__(self, other):
-        return self._counter != other
-
-
-def format_int(i):
-    """
-    Reduce *i* by some appropriate power of 1000 and suffix it with an
-    appropriate Greek qualifier (K for kilo, M for mega, etc.)
-    """
-    suffixes = ('', 'K', 'M', 'G', 'T', 'P')
-    try:
-        index = min(len(suffixes) - 1, int(log(abs(i), 1000)))
-    except ValueError:
-        return '0'
-    if not index:
-        return str(i)
-    else:
-        return '{value:.1f}{suffix}'.format(
-            value=(i / 1000 ** index),
-            suffix=suffixes[index])
-
-
-def to_bool(s, false='0', true='1'):
-    """
-    Convert the string *s* (stripped and lower-cased) to a bool, if it matches
-    either the *false* string (defaults to '0') or *true* (defaults to '1').
-    If it matches neither, raises a :exc:`ValueError`.
-    """
-    try:
-        return {
-            false: False,
-            true:  True,
-        }[s.strip().lower()]
-    except KeyError:
-        raise ValueError('not a valid bool {!r}'.format(s))
-
-
-def try_conversion(sample, conversion, threshold=0):
-    """
-    Given a :class:`~collections.Counter` *sample* of strings, call the
-    specified *conversion* on each string returning the set of converted
-    values.
-
-    *conversion* must be a callable that accepts a single string parameter and
-    returns the converted value. If the *conversion* fails it must raise a
-    :exc:`ValueError` exception.
-
-    If *threshold* is specified (defaults to 0), it defines the number of
-    "bad" conversions (which result in :exc:`ValueError` being raised) that
-    will be ignored. If *threshold* is exceeded, then :exc:`ValueError` will
-    be raised (or rather passed through from the underlying *conversion*).
-    """
-    assert isinstance(sample, (Counter, FrozenCounter))
-    assert sample
-    result = Counter()
-    if threshold:
-        assert threshold > 0
-        for item, count in sample.items():
-            try:
-                result[conversion(item)] += count
-            except ValueError: # XXX and TypeError?
-                threshold -= count
-                if threshold < 0:
-                    raise
-        if result:
-            return result
-        else:
-            # If threshold permitted us to get to this point but we managed to
-            # convert absolutely nothing, that's not success!
-            raise ValueError('zero successful conversions')
-    else:
-        for item, count in sample.items():
-            result[conversion(item)] += count
-        return result
-
-
-def render_repr(self, **override):
-    args = (
-        arg
-        for cls in self.__class__.mro() if cls is not object
-        for arg in cls.__slots__
-    )
-    return '{self.__class__.__name__}({args})'.format(
-        self=self, args=', '.join(
-            '{arg}={value}'.format(
-                arg=arg, value=override.get(arg, repr(getattr(self, arg))))
-            for arg in args
-            if arg not in override
-            or override[arg] is not None))
-
-
-# NOTE: Once oldstable is 3.7, would be nice to change all these to dataclasses
-# or possibly typing.NamedTuple instances?
+from .collections import Counter, FrozenCounter
+from .conversions import try_conversion, to_bool
+from .format import format_int, format_repr
 
 
 class ContainerStats:
@@ -171,7 +34,7 @@ class ContainerStats:
         return NotImplemented
 
     def __repr__(self):
-        return render_repr(self)
+        return format_repr(self)
 
     @classmethod
     def from_sample(cls, values):
@@ -197,7 +60,7 @@ class ScalarStats(ContainerStats):
         self.sample = sample
 
     def __repr__(self):
-        return render_repr(self, sample='...')
+        return format_repr(self, sample='...')
 
     def __eq__(self, other):
         if isinstance(other, ScalarStats):
@@ -243,7 +106,7 @@ class Pattern:
     __slots__ = ()
 
     def __repr__(self):
-        return render_repr(self)
+        return format_repr(self)
 
     def __eq__(self, other):
         # NOTE: Eventually we expect compare to grow options for tweaking the
@@ -267,7 +130,7 @@ class Container(Pattern):
         self.pattern = pattern
 
     def __repr__(self):
-        return render_repr(self, lengths=None)
+        return format_repr(self, lengths=None)
 
     def with_pattern(self, pattern):
         result = copy(self)
@@ -356,7 +219,7 @@ class TupleField(Pattern):
         return str(self.pattern)
 
     def __repr__(self):
-        return render_repr(self, index=None)
+        return format_repr(self, index=None)
 
     def compare(self, other):
         return (
@@ -393,7 +256,7 @@ class Scalar(Pattern):
         self.unique = self.values.unique
 
     def __repr__(self):
-        return render_repr(self, values='...')
+        return format_repr(self, values='...')
 
 
 class Bool(Scalar):
@@ -520,7 +383,7 @@ class Str(Scalar):
         return super().compare(other) and self.pattern == other.pattern
 
     def __repr__(self):
-        return render_repr(self, lengths=None, values='...')
+        return format_repr(self, lengths=None, values='...')
 
     def __str__(self):
         if self.pattern is None:

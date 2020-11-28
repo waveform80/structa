@@ -9,8 +9,8 @@ from itertools import groupby
 from dateutil.relativedelta import relativedelta
 
 from .chars import AnyChar, Digit, OctDigit, DecDigit, HexDigit
+from .conversions import try_conversion
 from .patterns import (
-    try_conversion,
     Container,
     Bool,
     Choice,
@@ -18,7 +18,6 @@ from .patterns import (
     DateTime,
     Dict,
     DictField,
-    Empty,
     Float,
     Int,
     List,
@@ -27,6 +26,7 @@ from .patterns import (
     ScalarStats,
     Str,
     URL,
+    Empty,
     Value,
     StrRepr,
 )
