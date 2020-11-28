@@ -20,37 +20,47 @@ try:
 except ImportError:
     yaml = None
 
-from . import analyzer, patterns
-from .duration import parse_duration_or_timestamp
+from .analyzer import Analyzer, ValidationWarning
+from .conversions import parse_duration_or_timestamp
+
+
+class MyAnalyzer(Analyzer):
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            bad_threshold=config.bad_threshold,
+            empty_threshold=config.empty_threshold,
+            choice_threshold=config.choice_threshold,
+            field_threshold=config.field_threshold,
+            max_numeric_len=config.max_numeric_len,
+            strip_whitespace=config.strip_whitespace,
+            min_timestamp=config.min_timestamp,
+            max_timestamp=config.max_timestamp,
+            track_progress=True)
 
 
 def main(args=None):
-    warnings.simplefilter('ignore', category=analyzer.ValidationWarning)
+    warnings.simplefilter('ignore', category=ValidationWarning)
     try:
         config = get_config(args)
         with Progress() as progress:
-            a = Analyzer.from_config(config)
-            d = load_data(config, progress)
-            q = Queue()
+            analyzer = MyAnalyzer.from_config(config)
+            data = load_data(config, progress)
+            queue = Queue()
             thread = Thread(
-                target=lambda a, d, q: q.put(a.analyze(d)),
-                args=(a, d, q),
-                daemon=True
-            )
+                target=lambda analyzer, data, queue:
+                    queue.put(analyzer.analyze(data)),
+                args=(analyzer, data, queue),
+                daemon=True)
             thread.start()
-            if a.track_progress:
-                progress.message('Measuring size')
-            analyzing = False
+            progress.message('Analyzing structure')
             while True:
-                if a.progress is not None:
-                    if not analyzing:
-                        analyzing = True
-                        progress.message('Analyzing structure')
-                    progress.position = a.progress
+                if analyzer.progress is not None:
+                    progress.position = analyzer.progress
                 thread.join(0.25)
                 if not thread.is_alive():
                     break
-        print(q.get(timeout=1, block=True))
+        print(queue.get(timeout=1, block=True))
     except Exception as e:
         debug = int(os.environ.get('DEBUG', '0'))
         if not debug:
@@ -168,21 +178,6 @@ def get_config(args):
     return config
 
 
-class Analyzer(analyzer.Analyzer):
-    @classmethod
-    def from_config(cls, config):
-        return cls(
-            bad_threshold=config.bad_threshold,
-            empty_threshold=config.empty_threshold,
-            choice_threshold=config.choice_threshold,
-            field_threshold=config.field_threshold,
-            max_numeric_len=config.max_numeric_len,
-            strip_whitespace=config.strip_whitespace,
-            min_timestamp=config.min_timestamp,
-            max_timestamp=config.max_timestamp,
-            track_progress=True)
-
-
 class Progress:
     def __init__(self, stream=sys.__stderr__, show_bar=True, show_percent=True,
                  show_eta=True, show_spinner=False):
@@ -203,7 +198,7 @@ class Progress:
         if self.term.is_a_tty:
             eta = pct = bar = spin = ''
             if self._show_eta and self._started is not None and self._position > 0.1:
-                eta = ' ETA {eta} '.format(
+                eta = ' {eta} remaining '.format(
                     eta=humanize.naturaldelta(
                         (1 - self._position) * (datetime.now() - self._started)
                         / self._position))
@@ -284,7 +279,7 @@ def detect_encoding(config):
             detector.feed(buf)
         result = detector.close()
         if result['confidence'] < 0.9:
-            warnings.warn(analyzer.ValidationWarning(
+            warnings.warn(ValidationWarning(
                 'Low confidence ({confidence}) in detected character set'.
                 format_map(result)))
         config.encoding = result['encoding']
@@ -303,11 +298,11 @@ def detect_format(config):
             if sample[:1] in ('[', '{'):
                 config.format = 'json'
             elif sample[:5] == '<?xml':
-                warnings.warn(analyzer.ValidationWarning(
+                warnings.warn(ValidationWarning(
                     'whitespace before xml header'))
                 config.format = 'xml'
             elif sample[:1] == '<':
-                warnings.warn(analyzer.ValidationWarning(
+                warnings.warn(ValidationWarning(
                     'missing xml header'))
                 config.format = 'xml'
             else:

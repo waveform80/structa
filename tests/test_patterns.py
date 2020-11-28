@@ -7,23 +7,6 @@ from structa.chars import *
 from structa.patterns import *
 
 
-def test_frozen_counter():
-    c = Counter((1, 2, 3) * 100 + (4, 5) * 50)
-    f = FrozenCounter(c)
-    assert c == f
-    assert Counter(c.elements()) == Counter(f.elements())
-    assert repr(f) == 'FrozenCounter({c!r})'.format(c=c)
-    c[6] = 1
-    assert c != f
-    assert Counter(c.elements()) != Counter(f.elements())
-    d = {f: 1}
-    assert d[f] == 1
-    with pytest.raises(AssertionError):
-        FrozenCounter.from_counter({})
-    assert FrozenCounter.from_counter(c)._counter is not c
-    assert FrozenCounter.from_counter(f) is f
-
-
 def test_format_int():
     assert format_int(0) == '0'
     assert format_int(1) == '1'
@@ -33,31 +16,6 @@ def test_format_int():
     assert format_int(-1000) == '-1.0K'
     assert format_int(999900) == '999.9K'
     assert format_int(1000000) == '1.0M'
-
-
-def test_to_bool():
-    assert to_bool('0') is False
-    assert to_bool('1') is True
-    assert to_bool('true', false='false', true='true') is True
-    assert to_bool('f', false='f', true='t') is False
-    with pytest.raises(ValueError):
-        to_bool('')
-    with pytest.raises(ValueError):
-        to_bool('f')
-
-
-def test_try_conversion():
-    data = range(10)
-    str_data = Counter(str(n) for n in data)
-    assert try_conversion(str_data, int) == Counter(data)
-    str_data[''] = 1
-    assert try_conversion(str_data, int, threshold=1) == Counter(data)
-    with pytest.raises(ValueError):
-        str_data[''] = 4
-        try_conversion(str_data, int, threshold=2)
-    with pytest.raises(ValueError):
-        all_bad = Counter('' for n in range(4))
-        try_conversion(all_bad, int, threshold=5)
 
 
 def test_container_stats():
@@ -426,13 +384,13 @@ def test_url():
 def test_choices():
     data = {'url'}
     pattern = Choices({Choice(s, False) for s in data})
-    assert str(pattern) == 'url'
+    assert str(pattern) == "<'url'>"
     assert pattern.validate('url')
     assert not pattern.validate('foo')
 
     data = {'url', 'count', 'active'}
     pattern = Choices({Choice(s, False) for s in data})
-    assert set(s.strip(" '") for s in str(pattern).strip('{}').split(',')) == data
+    assert set(s.strip("'") for s in str(pattern).strip('<>').split('|')) == data
     assert pattern.validate('url')
     assert not pattern.validate('foo')
     assert not pattern.validate(1)

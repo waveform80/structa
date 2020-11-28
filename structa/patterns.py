@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 from .chars import Digit, AnyChar
 from .collections import Counter, FrozenCounter
-from .conversions import try_conversion, to_bool
+from .conversions import try_conversion, parse_bool
 from .format import format_int, format_repr
 
 
@@ -271,7 +271,7 @@ class Bool(Scalar):
         return StrRepr(
             cls(
                 try_conversion(
-                    iterable, partial(to_bool, false=false, true=true),
+                    iterable, partial(parse_bool, false=false, true=true),
                     bad_threshold)
             ),
             pattern='{false}|{true}'.format(false=false, true=true)
@@ -459,7 +459,7 @@ class StrRepr(Repr):
                 value = datetime.strptime(value, self.pattern)
             elif isinstance(self.inner, Bool):
                 false, true = self.pattern.split('|', 1)
-                value = to_bool(value, false, true)
+                value = parse_bool(value, false, true)
             else:
                 assert False
         except ValueError:
@@ -508,15 +508,24 @@ class URL(Str):
         )
 
 
-class Choices(frozenset):
+class Choices(Pattern):
+    __slots__ = ('values',)
+
+    def __init__(self, values):
+        self.values = frozenset(values)
+        assert all(isinstance(value, Choice) for value in self.values)
+
+    def __len__(self):
+        return len(self.values)
+
+    def __iter__(self):
+        return iter(self.values)
+
     def __str__(self):
-        if len(self) == 1:
-            return str(next(iter(self)).value)
-        else:
-            choices = shorten(
-                ', '.join(str(choice.value) for choice in self),
-                width=60, placeholder='...')
-            return '{{{choices}}}'.format(choices=choices)
+        choices = shorten(
+            '|'.join(str(choice) for choice in self),
+            width=60, placeholder='...')
+        return '<{choices}>'.format(choices=choices)
 
     def validate(self, value):
         return any(choice.validate(value) for choice in self)

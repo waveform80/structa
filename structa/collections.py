@@ -43,7 +43,29 @@ class FrozenCounter(Mapping):
         return self._hash
 
     def __eq__(self, other):
-        return self._counter == other
+        if isinstance(other, FrozenCounter):
+            return self._counter == other._counter
+        elif isinstance(other, Counter):
+            return self._counter == other
+        return NotImplemented
 
     def __ne__(self, other):
-        return self._counter != other
+        if isinstance(other, FrozenCounter):
+            return self._counter != other._counter
+        elif isinstance(other, Counter):
+            return self._counter != other
+        return NotImplemented
+
+    def __add__(self, other):
+        if isinstance(other, FrozenCounter):
+            return FrozenCounter.from_counter(self._counter + other._counter)
+        elif isinstance(other, Counter):
+            return FrozenCounter.from_counter(self._counter + other)
+        return NotImplemented
+
+    def __sub__(self, other):
+        if isinstance(other, FrozenCounter):
+            return FrozenCounter.from_counter(self._counter - other._counter)
+        elif isinstance(other, Counter):
+            return FrozenCounter.from_counter(self._counter - other)
+        return NotImplemented

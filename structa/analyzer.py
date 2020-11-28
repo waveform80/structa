@@ -108,6 +108,8 @@ class Analyzer:
         self.track_progress = track_progress
         self._all_ids = set()
         self._all_ids_card = 0
+        self._top_ids = set()
+        self._top_ids_card = 0
 
     def analyze(self, it):
         """
@@ -115,7 +117,20 @@ class Analyzer:
         description of its structure.
         """
         if self.track_progress:
-            self._all_ids = {id(item) for item in flatten(it)}
+            # For the purposes of providing some progress reporting during
+            # measurement of all the ids in *it*, we take the ids of all top
+            # level items in *it*
+            try:
+                self._top_ids = {id(item) for item in it}
+            except TypeError:
+                # The top-level item is not iterable ... this is going to be
+                # quick :)
+                pass
+            else:
+                self._top_ids_card = len(self._top_ids)
+            for item in flatten(it):
+                self._top_ids.discard(id(item))
+                self._all_ids.add(id(item))
         self._all_ids_card = len(self._all_ids)
         return self._merge(self._analyze(it, ()))
 
@@ -124,8 +139,16 @@ class Analyzer:
         """
         Tracks the current analysis progress as a :class:`~fractions.Fraction`.
         """
+        top_ratio = Fraction(1, 5)
         if self._all_ids_card:
-            return 1 - Fraction(len(self._all_ids), self._all_ids_card)
+            return (
+                top_ratio +
+                (1 - top_ratio) *
+                    (1 - Fraction(len(self._all_ids), self._all_ids_card)))
+        elif self._top_ids_card:
+            return (
+                top_ratio *
+                    (1 - Fraction(len(self._top_ids), self._top_ids_card)))
         else:
             return None
 
@@ -138,23 +161,27 @@ class Analyzer:
         """
         if isinstance(path, Container):
             if isinstance(path, Dict):
-                if all(isinstance(item.key, Choice) for item in path.pattern):
-                    template = path.pattern[0].pattern
-                    if all(item.pattern == template for item in path.pattern):
-                        keys = Choices(item.key for item in path.pattern)
-                        return path.with_pattern([DictField(keys, template)])
+                # Only Dicts containing containers are merged; Dicts (directly)
+                # containing scalars, and Tuples are left alone as containers
+                # of distinct columns / fields
+                if (
+                    len(path.pattern) > 1 and
+                    isinstance(path.pattern[0].key, Choice) and
+                    isinstance(path.pattern[0].pattern, Container) and
+                    all(
+                        item.pattern == path.pattern[0].pattern
+                        for item in path.pattern[1:]
+                    )
+                ):
+                    keys = self._match(
+                        (item.key.value for item in path.pattern),
+                        (path,), threshold=0)
+                    # TODO merge template
+                    return path.with_pattern([
+                        DictField(keys, path.pattern[0].pattern)
+                    ])
                 return path.with_pattern([
                     DictField(field.key, self._merge(field.pattern))
-                    for field in path.pattern
-                ])
-            elif isinstance(path, Tuple):
-                if all(isinstance(item.index, Choice) for item in path.pattern):
-                    template = path.pattern[0].pattern
-                    if all(item.pattern == template for item in path.pattern):
-                        indexes = Choices(item.index for item in path.pattern)
-                        return path.with_pattern([TupleField(indexes, template)])
-                return path.with_pattern([
-                    TupleField(field.index, self._merge(field.pattern))
                     for field in path.pattern
                 ])
             else:
