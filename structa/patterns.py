@@ -645,7 +645,7 @@ class URL(Str):
         )
 
 
-class Choices(set):
+class Choices(frozenset):
     def __str__(self):
         if len(self) == 1:
             return str(next(iter(self)).value)

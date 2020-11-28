@@ -11,6 +11,7 @@ from dateutil.relativedelta import relativedelta
 from .chars import AnyChar, Digit, OctDigit, DecDigit, HexDigit
 from .patterns import (
     try_conversion,
+    Container,
     Bool,
     Choice,
     Choices,
@@ -116,7 +117,7 @@ class Analyzer:
         if self.track_progress:
             self._all_ids = {id(item) for item in flatten(it)}
         self._all_ids_card = len(self._all_ids)
-        return self._analyze(it, ())
+        return self._merge(self._analyze(it, ()))
 
     @property
     def progress(self):
@@ -127,6 +128,42 @@ class Analyzer:
             return 1 - Fraction(len(self._all_ids), self._all_ids_card)
         else:
             return None
+
+    def _merge(self, path):
+        """
+        Merge common sub-expressions into a single expression. For example,
+        if a :class:`Dict` maps several :class:`Choice` instances to structures
+        which are all the same, then they can be collapsed to a single
+        :class:`Choices` which maps to the singular structure.
+        """
+        if isinstance(path, Container):
+            if isinstance(path, Dict):
+                if all(isinstance(item.key, Choice) for item in path.pattern):
+                    template = path.pattern[0].pattern
+                    if all(item.pattern == template for item in path.pattern):
+                        keys = Choices(item.key for item in path.pattern)
+                        return path.with_pattern([DictField(keys, template)])
+                return path.with_pattern([
+                    DictField(field.key, self._merge(field.pattern))
+                    for field in path.pattern
+                ])
+            elif isinstance(path, Tuple):
+                if all(isinstance(item.index, Choice) for item in path.pattern):
+                    template = path.pattern[0].pattern
+                    if all(item.pattern == template for item in path.pattern):
+                        indexes = Choices(item.index for item in path.pattern)
+                        return path.with_pattern([TupleField(indexes, template)])
+                return path.with_pattern([
+                    TupleField(field.index, self._merge(field.pattern))
+                    for field in path.pattern
+                ])
+            else:
+                return path.with_pattern([
+                    self._merge(item)
+                    for item in path.pattern
+                ])
+        else:
+            return path
 
     def _analyze(self, it, path, *, threshold=None, card=1):
         """
