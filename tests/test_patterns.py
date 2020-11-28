@@ -70,12 +70,12 @@ def test_dict_with_long_pattern():
     ]
     pattern = Dict(data, pattern=[
         DictField(
-            Choice('active', optional=True),
+            Field('active', optional=True),
             StrRepr(Bool(Counter({False, True})), pattern="f|t")),
         DictField(
-            Choice('label', optional=False),
+            Field('label', optional=False),
             Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None)),
-        DictField(Choice('num', optional=False), Int(Counter({1, 2, 3, 4}))),
+        DictField(Field('num', optional=False), Int(Counter({1, 2, 3, 4}))),
     ])
     assert pattern.lengths.min == 2
     assert pattern.lengths.max == 3
@@ -87,11 +87,11 @@ def test_dict_with_long_pattern():
 }"""
     assert repr(pattern) == (
         "Dict(pattern=["
-        "DictField(key=Choice(value='active', optional=True), "
+        "DictField(key=Field(value='active', optional=True), "
         "pattern=StrRepr(inner=Bool(values=..., unique=True), pattern='f|t')), "
-        "DictField(key=Choice(value='label', optional=False), "
+        "DictField(key=Field(value='label', optional=False), "
         "pattern=Str(pattern=None, values=..., unique=True)), "
-        "DictField(key=Choice(value='num', optional=False), "
+        "DictField(key=Field(value='num', optional=False), "
         "pattern=Int(values=..., unique=True))])")
 
 
@@ -118,10 +118,10 @@ def test_tuple_with_pattern():
     ]
     pattern = Tuple(data, pattern=[
         TupleField(
-            Choice(0, optional=False),
+            Field(0, optional=False),
             Str(Counter(['foo', 'bar', 'baz']),
                 pattern=(AnyChar, AnyChar, AnyChar))),
-        TupleField(Choice(1, optional=False), Int(Counter([1, 2, 3]))),
+        TupleField(Field(1, optional=False), Int(Counter([1, 2, 3]))),
     ])
     assert pattern.lengths.min == 2
     assert pattern.lengths.max == 2
@@ -141,13 +141,13 @@ def test_tuple_with_long_pattern():
     ]
     pattern = List([data], pattern=[Tuple(data, pattern=[
         TupleField(
-            Choice(0, optional=False),
+            Field(0, optional=False),
              Str(Counter(t[0] for t in data), pattern=tuple('J. R. R. Tolkien'))),
         TupleField(
-            Choice(1, optional=False),
+            Field(1, optional=False),
              Str(Counter(t[1] for t in data), pattern=None)),
         TupleField(
-            Choice(2, optional=False),
+            Field(2, optional=False),
              StrRepr(
                  DateTime(Counter(dt.datetime.strptime(t[2], '%Y-%m-%d') for t in data)),
                  pattern='%Y-%m-%d'
@@ -204,13 +204,13 @@ def test_list_with_long_pattern():
     pattern = List(data, pattern=[Dict(
         data[0], pattern=[
             DictField(
-                Choice('active', optional=True),
+                Field('active', optional=True),
                 StrRepr(Bool(Counter({False, True})), pattern="f|t")),
             DictField(
-                Choice('label', optional=False),
+                Field('label', optional=False),
                 Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None)),
             DictField(
-                Choice('num', optional=False), Int(Counter({1, 2, 3, 4}))),
+                Field('num', optional=False), Int(Counter({1, 2, 3, 4}))),
         ])])
     assert pattern.lengths.min == pattern.lengths.max == 4
     assert str(pattern) == """\
@@ -369,13 +369,13 @@ def test_url():
 
 def test_choices():
     data = {'url'}
-    pattern = Choices({Choice(s, False) for s in data})
+    pattern = Fields({Field(s, False) for s in data})
     assert str(pattern) == "<'url'>"
     assert pattern.validate('url')
     assert not pattern.validate('foo')
 
     data = {'url', 'count', 'active'}
-    pattern = Choices({Choice(s, False) for s in data})
+    pattern = Fields({Field(s, False) for s in data})
     assert set(s.strip("'") for s in str(pattern).strip('<>').split('|')) == data
     assert pattern.validate('url')
     assert not pattern.validate('foo')

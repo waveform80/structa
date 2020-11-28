@@ -14,8 +14,8 @@ from .patterns import (
     Stats,
     Container,
     Bool,
-    Choice,
-    Choices,
+    Field,
+    Fields,
     DateTime,
     Dict,
     DictField,
@@ -88,13 +88,11 @@ def flatten(it):
 
 class Analyzer:
     def __init__(self, *, bad_threshold=Fraction(2, 100),
-                 empty_threshold=Fraction(98, 100), choice_threshold=20,
-                 field_threshold=20, max_numeric_len=30, strip_whitespace=False,
-                 min_timestamp=None, max_timestamp=None,
-                 track_progress=False):
+                 empty_threshold=Fraction(98, 100), field_threshold=20,
+                 max_numeric_len=30, strip_whitespace=False,
+                 min_timestamp=None, max_timestamp=None, track_progress=False):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
-        self.choice_threshold = choice_threshold
         self.field_threshold = field_threshold
         self.max_numeric_len = max_numeric_len
         self.strip_whitespace = strip_whitespace
@@ -154,10 +152,10 @@ class Analyzer:
 
     def _merge(self, path):
         """
-        Merge common sub-expressions into a single expression. For example,
-        if a :class:`Dict` maps several :class:`Choice` instances to structures
-        which are all the same, then they can be collapsed to a single
-        :class:`Choices` which maps to the singular structure.
+        Merge common sub-structures into a single structure. For example, if a
+        :class:`Dict` maps several :class:`Field` instances to other mappings
+        which are all the same, then they can be collapsed to a single scalar
+        which maps to the singular structure.
         """
         if isinstance(path, Container):
             if isinstance(path, Dict):
@@ -166,7 +164,7 @@ class Analyzer:
                 # of distinct columns / fields
                 if (
                     len(path.pattern) > 1 and
-                    isinstance(path.pattern[0].key, Choice) and
+                    isinstance(path.pattern[0].key, Field) and
                     isinstance(path.pattern[0].pattern, Container) and
                     all(
                         item.pattern == path.pattern[0].pattern
@@ -215,11 +213,15 @@ class Analyzer:
             return pattern
 
     def _analyze_dict(self, it, path, pattern):
+        """
+        Subroutine of :meth:`_analyze` to handle the specific case of analyzing
+        the key pattern of a :class:`Dict`, followed by the values pattern.
+        """
         fields = self._analyze(
             it, path + (pattern,),
             threshold=self.field_threshold,
             card=pattern.lengths.card)
-        if isinstance(fields, Choices):
+        if isinstance(fields, Fields):
             return pattern.with_pattern([
                 DictField(choice, self._analyze(
                     it, path + (pattern, choice),
@@ -234,6 +236,10 @@ class Analyzer:
             ])
 
     def _analyze_tuple(self, it, path, pattern):
+        """
+        Subroutine of :meth:`_analyze` to handle the specific case of analyzing
+        the index pattern of a :class:`Tuple`, followed by the values pattern.
+        """
         # Tuples are expected to be heterogeneous, so we attempt to treat
         # them as a tuple of item patterns
         # XXX Should this still be separate to _analyze_dict? Perhaps given the
@@ -242,7 +248,7 @@ class Analyzer:
             it, path + (pattern,),
             threshold=self.field_threshold,
             card=pattern.lengths.card)
-        if isinstance(fields, Choices):
+        if isinstance(fields, Fields):
             return pattern.with_pattern([
                 TupleField(choice, self._analyze(
                     it, path + (pattern, choice),
@@ -288,7 +294,7 @@ class Analyzer:
             head, *tail = path
             if isinstance(head, (List, Dict)):
                 assert False, "invalid key type"
-            elif isinstance(head, Choice):
+            elif isinstance(head, Field):
                 try:
                     yield from self._extract(it[head.value], tail)
                 except KeyError:
@@ -324,9 +330,9 @@ class Analyzer:
         if path:
             # values
             head, *tail = path
-            if not isinstance(head, (Empty, Int, Choice)):
+            if not isinstance(head, (Empty, Int, Field)):
                 assert False, "invalid column index type"
-            elif isinstance(head, Choice):
+            elif isinstance(head, Field):
                 try:
                     yield from self._extract(it[head.value], tail)
                 except IndexError:
@@ -349,7 +355,7 @@ class Analyzer:
         objects found at a particular layer of the hierarchy.
         """
         if threshold is None:
-            threshold = self.choice_threshold
+            threshold = self.field_threshold
         items = list(items)
         if not items:
             return Empty()
@@ -384,8 +390,8 @@ class Analyzer:
                 # we'll re-merge them later
                 if path and isinstance(path[-1], (Dict, Tuple)):
                     if len(sample) < threshold:
-                        return Choices(
-                            Choice(key, optional=count < parent_card)
+                        return Fields(
+                            Field(key, optional=count < parent_card)
                             for key, count in sample.items()
                         )
 

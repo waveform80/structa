@@ -41,6 +41,11 @@ class Stats:
                 self.median == other.median)
         return NotImplemented
 
+    def __add__(self, other):
+        if isinstance(other, Stats):
+            return Stats.from_sample(self.sample + other.sample)
+        return NotImplemented
+
     @classmethod
     def from_sample(cls, sample):
         assert isinstance(sample, (Counter, FrozenCounter))
@@ -479,12 +484,12 @@ class URL(Str):
         )
 
 
-class Choices(Pattern):
+class Fields(Pattern):
     __slots__ = ('values',)
 
     def __init__(self, values):
         self.values = frozenset(values)
-        assert all(isinstance(value, Choice) for value in self.values)
+        assert all(isinstance(value, Field) for value in self.values)
 
     def __len__(self):
         return len(self.values)
@@ -503,7 +508,7 @@ class Choices(Pattern):
 
 
 @total_ordering
-class Choice(Pattern):
+class Field(Pattern):
     __slots__ = ('value', 'optional')
 
     def __init__(self, value, optional=False):
@@ -513,19 +518,19 @@ class Choice(Pattern):
 
     def compare(self, other):
         # We deliberately exclude *optional* from consideration here; the
-        # only time a Choice is compared is during common sub-tree
+        # only time a Field is compared is during common sub-tree
         # elimination where a key might be mandatory in one sub-set but
         # optional in another
         return super().compare(other) and self.value == other.value
 
     def __lt__(self, other):
-        if isinstance(other, Choice):
+        if isinstance(other, Field):
             return self.value < other.value
         return NotImplemented
 
     def __hash__(self):
-        # We define a hash to permit Choice to be present in a Choices
-        # instance; note that this implies a Choice is effectively immutable
+        # We define a hash to permit Field to be present in a Fields
+        # instance; note that this implies a Field is effectively immutable
         return hash((self.value,))
 
     def __str__(self):

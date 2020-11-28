@@ -52,7 +52,7 @@ def test_analyze_tuple():
         sample=[data],
         pattern=[
             TupleField(
-                index=Choice(i, False),
+                index=Field(i, False),
                 pattern=Int(FrozenCounter((i,)))
             )
             for i in range(10)
@@ -86,8 +86,8 @@ def test_analyze_dict_optional_choices():
         sample=[data], pattern=[Dict(
             sample=data,
             pattern=[
-                DictField(Choice('bar', True), Int(Counter((2,) * 999))),
-                DictField(Choice('foo', False), Int(Counter((1,) * 1000))),
+                DictField(Field('bar', True), Int(Counter((2,) * 999))),
+                DictField(Field('foo', False), Int(Counter((1,) * 1000))),
             ]
         )])
 
@@ -118,8 +118,8 @@ def test_analyze_dict_of_dicts():
                 Dict(
                     sample=data.values(),
                     pattern=[
-                        DictField(Choice('bar', False), Int(Counter(range(99)))),
-                        DictField(Choice('foo', False), Int(Counter(range(99)))),
+                        DictField(Field('bar', False), Int(Counter(range(99)))),
+                        DictField(Field('foo', False), Int(Counter(range(99)))),
                     ])
             )])
 
@@ -137,8 +137,8 @@ def test_analyze_dict_keyed_by_tuple():
                 Tuple(
                     sample=list(data.keys()),
                     pattern=[
-                        TupleField(Choice(0, False), Int(Counter(range(50)))),
-                        TupleField(Choice(1, False), Int(Counter(range(1, 51)))),
+                        TupleField(Field(0, False), Int(Counter(range(50)))),
+                        TupleField(Field(1, False), Int(Counter(range(1, 51)))),
                     ]),
                 Int(Counter(range(2, 52))))
         ])
@@ -155,8 +155,8 @@ def test_analyze_tuple_optional_fields():
         pattern=[Tuple(
             sample=data,
             pattern=[
-                TupleField(Choice(0, False), Int(Counter(range(101)))),
-                TupleField(Choice(1, True), Int(Counter(range(1, 101)))),
+                TupleField(Field(0, False), Int(Counter(range(101)))),
+                TupleField(Field(1, True), Int(Counter(range(1, 101)))),
             ]
         )])
 
@@ -174,9 +174,9 @@ def test_analyze_namedtuples_optional_fields():
         pattern=[Tuple(
             sample=data,
             pattern=[
-                TupleField(Choice(0, False), Int(Counter(range(101)))),
-                TupleField(Choice(1, False), Int(Counter(range(1, 102)))),
-                TupleField(Choice(2, True), Int(Counter(range(2, 102)))),
+                TupleField(Field(0, False), Int(Counter(range(101)))),
+                TupleField(Field(1, False), Int(Counter(range(1, 102)))),
+                TupleField(Field(2, True), Int(Counter(range(2, 102)))),
             ]
         )])
 
@@ -191,16 +191,16 @@ def test_analyze_lists_as_tuples():
         pattern=[Tuple(
             sample=data,
             pattern=[
-                TupleField(Choice(0, False), Int(Counter(range(100)))),
-                TupleField(Choice(1, False), Int(Counter(range(1, 101)))),
-                TupleField(Choice(2, False), Int(Counter(range(2, 102)))),
+                TupleField(Field(0, False), Int(Counter(range(100)))),
+                TupleField(Field(1, False), Int(Counter(range(1, 101)))),
+                TupleField(Field(2, False), Int(Counter(range(2, 102)))),
             ]
         )])
 
 
 def test_analyze_bools():
     data = [bool(i % 2) for i in range(1000)]
-    assert Analyzer(choice_threshold=0).analyze(data) == List(
+    assert Analyzer(field_threshold=0).analyze(data) == List(
         sample=[data], pattern=[Bool(FrozenCounter(data))]
     )
 
@@ -438,7 +438,7 @@ def test_analyze_url_list():
         'http://wikipedia.org/',
         'https://youtube.com/',
     ]
-    assert Analyzer(choice_threshold=5, bad_threshold=0).analyze(data) == List(
+    assert Analyzer(field_threshold=5, bad_threshold=0).analyze(data) == List(
         sample=[data],
         pattern=[URL(FrozenCounter(data))])
 
@@ -473,7 +473,7 @@ def test_analyze_strings():
         "the paragon of animals!",
         "And yet, to me, what is this quintessence of dust?",
     ]
-    assert Analyzer(choice_threshold=5, bad_threshold=0).analyze(data) == List(
+    assert Analyzer(field_threshold=5, bad_threshold=0).analyze(data) == List(
         sample=[data],
         pattern=[Str(FrozenCounter(data))])
 
@@ -486,7 +486,7 @@ def test_analyze_strings_with_strip():
         for i in range(1000)
     ]
     stripped = [s.strip() for s in data]
-    assert Analyzer(choice_threshold=0, bad_threshold=0,
+    assert Analyzer(field_threshold=0, bad_threshold=0,
                     strip_whitespace=True).analyze(data) == List(
         sample=[data],
         pattern=[Str(Counter(stripped),

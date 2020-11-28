@@ -30,7 +30,6 @@ class MyAnalyzer(Analyzer):
         return cls(
             bad_threshold=config.bad_threshold,
             empty_threshold=config.empty_threshold,
-            choice_threshold=config.choice_threshold,
             field_threshold=config.field_threshold,
             max_numeric_len=config.max_numeric_len,
             strip_whitespace=config.strip_whitespace,
@@ -100,16 +99,11 @@ def get_config(args):
         "analysis. If disabled, a replacement character will be inserted "
         "for invalid sequences. The default is strict decoding")
     parser.add_argument(
-        '-C', '--choice-threshold', type=int, metavar='INT', default=20,
-        help="If the number of distinct values in a field is less than this "
-        "then they will be considered distinct choices instead of being "
-        "lumped under a generic type like <str> (default: %(default)s)")
-    parser.add_argument(
-        '-F', '--field-threshold', type=int, metavar='INT', default=None,
+        '-F', '--field-threshold', type=int, metavar='INT', default=20,
         help="If the number of distinct keys in a map, or columns in a tuple "
         "is less than this then they will be considered distinct fields "
-        "instead of being lumped under a generic type like <str> (defaults "
-        "to the value of --choice-threshold)")
+        "instead of being lumped under a generic type like <str> (default: "
+        "%(default)s)")
     parser.add_argument(
         '-B', '--bad-threshold', type=num, metavar='NUM', default='2%',
         help="The proportion of string values which are allowed to mismatch "
@@ -168,14 +162,9 @@ def get_config(args):
             help='Controls whether the "safe" or "unsafe" YAML loader is used '
             'to parse YAML files. The default is the "safe" parser. Only use '
             "--no-yaml-safe if you trust the source of your data")
-    parser.set_defaults(sample=b'', csv_dialect=None)
 
-    config = parser.parse_args(args)
-    config.field_threshold = (
-        config.choice_threshold
-        if config.field_threshold is None else
-        config.field_threshold)
-    return config
+    parser.set_defaults(sample=b'', csv_dialect=None)
+    return parser.parse_args(args)
 
 
 class Progress:
