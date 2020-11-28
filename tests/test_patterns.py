@@ -7,33 +7,19 @@ from structa.chars import *
 from structa.patterns import *
 
 
-def test_format_int():
-    assert format_int(0) == '0'
-    assert format_int(1) == '1'
-    assert format_int(999) == '999'
-    assert format_int(-999) == '-999'
-    assert format_int(1000) == '1.0K'
-    assert format_int(-1000) == '-1.0K'
-    assert format_int(999900) == '999.9K'
-    assert format_int(1000000) == '1.0M'
-
-
-def test_container_stats():
-    c = ContainerStats.from_sample([[], [1], [1, 2, 3]])
-    assert c == ContainerStats(3, 0, 3, 1)
-    assert c != []
-    assert repr(c) == 'ContainerStats(card=3, min=0, max=3, median=1)'
-
-
-def test_scalar_stats():
-    s = ScalarStats.from_sample(Counter(range(10)))
-    assert s == ScalarStats( Counter(range(10)), 10, 0, 9, 5)
+def test_stats():
+    s = Stats.from_sample(Counter(range(10)))
+    assert s == Stats(Counter(range(10)), 10, 0, 9, 5)
     assert s != []
-    assert repr(s) == 'ScalarStats(sample=..., card=10, min=0, max=9, median=5)'
-    assert ScalarStats.from_sample(Counter(range(1000))) == ScalarStats(
+    assert repr(s) == 'Stats(sample=..., card=10, min=0, max=9, median=5)'
+    assert Stats.from_sample(Counter(range(1000))) == Stats(
         Counter(range(1000)), 1000, 0, 999, 500)
     with pytest.raises(AssertionError):
-        ScalarStats.from_sample([])
+        Stats.from_sample([])
+    c = Stats.from_lengths([[], [1], [1, 2, 3]])
+    assert c == Stats(Counter((0, 1, 3)), 3, 0, 3, 1)
+    assert c != []
+    assert repr(c) == 'Stats(sample=..., card=3, min=0, max=3, median=1)'
 
 
 def test_pattern():

@@ -11,6 +11,8 @@ def test_frozencounter_construction():
     assert a.keys() == {1}
     assert a[1] == 3
     assert b.keys() == {1, 2, 3}
+    assert len(b) == 3
+    assert sorted(b) == [1, 2, 3]
     assert tuple(b.values()) == (1,) * 3
 
 

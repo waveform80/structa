@@ -11,6 +11,7 @@ from dateutil.relativedelta import relativedelta
 from .chars import AnyChar, Digit, OctDigit, DecDigit, HexDigit
 from .conversions import try_conversion
 from .patterns import (
+    Stats,
     Container,
     Bool,
     Choice,
@@ -23,7 +24,6 @@ from .patterns import (
     List,
     Tuple,
     TupleField,
-    ScalarStats,
     Str,
     URL,
     Empty,
@@ -444,7 +444,7 @@ class Analyzer:
                     sample = items
                     break
 
-        lengths = ScalarStats.from_lengths(sample)
+        lengths = Stats.from_lengths(sample)
         if lengths.max <= self.max_numeric_len:
             result = self._match_numeric_str(sample, bad_threshold=bad_threshold)
             if result is not None:

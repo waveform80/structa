@@ -10,60 +10,29 @@ from .conversions import try_conversion, parse_bool
 from .format import format_int, format_repr
 
 
-class ContainerStats:
-    """
-    Stores the cardinality, minimum, maximum, and (high) median of the lengths
-    of sampled containers (lists, dicts, etc.)
-    """
-    __slots__ = ('card', 'min', 'max', 'median')
-
-    def __init__(self, card, min, max, median):
-        super().__init__()
-        self.card = card
-        self.min = min
-        self.max = max
-        self.median = median
-
-    def __eq__(self, other):
-        if isinstance(other, ContainerStats):
-            return (
-                self.card == other.card and
-                self.min == other.min and
-                self.max == other.max and
-                self.median == other.median)
-        return NotImplemented
-
-    def __repr__(self):
-        return format_repr(self)
-
-    @classmethod
-    def from_sample(cls, values):
-        keys = sorted(len(value) for value in values)
-        assert len(keys) > 0
-        return cls(
-            len(keys), keys[0], keys[-1], keys[len(keys) // 2])
-
-
-class ScalarStats(ContainerStats):
+class Stats:
     """
     Stores cardinality, minimum, maximum, and (high) median of a sampling of
-    numeric values (or lengths of strings), along with top and bottom 10
-    samples (including count) by popularity.
+    numeric values (or lengths of strings or containers), along with the
+    specified sample of values.
     """
-    __slots__ = ('sample',)
+    __slots__ = ('sample', 'card', 'min', 'max', 'median')
 
     def __init__(self, sample, card, min, max, median):
         if not isinstance(sample, FrozenCounter):
             assert isinstance(sample, Counter)
             sample = FrozenCounter.from_counter(sample)
-        super().__init__(card, min, max, median)
         self.sample = sample
+        self.card = card
+        self.min = min
+        self.max = max
+        self.median = median
 
     def __repr__(self):
         return format_repr(self, sample='...')
 
     def __eq__(self, other):
-        if isinstance(other, ScalarStats):
+        if isinstance(other, Stats):
             return (
                 self.sample == other.sample and
                 self.card == other.card and
@@ -87,10 +56,12 @@ class ScalarStats(ContainerStats):
 
     @classmethod
     def from_lengths(cls, values):
-        assert isinstance(values, (Counter, FrozenCounter))
-        lengths = Counter()
-        for item, count in values.items():
-            lengths[len(item)] += count
+        if isinstance(values, (Counter, FrozenCounter)):
+            lengths = Counter()
+            for item, count in values.items():
+                lengths[len(item)] += count
+        else:
+            lengths = FrozenCounter(len(item) for item in values)
         return cls.from_sample(lengths)
 
     @property
@@ -126,7 +97,7 @@ class Container(Pattern):
 
     def __init__(self, sample, pattern=None):
         super().__init__()
-        self.lengths = ContainerStats.from_sample(sample)
+        self.lengths = Stats.from_lengths(sample)
         self.pattern = pattern
 
     def __repr__(self):
@@ -138,8 +109,8 @@ class Container(Pattern):
         return result
 
     def compare(self, other):
-        # The ContainerStats lengths attribute is ignored as it has no bearing
-        # on the actual structure itself
+        # The Stats lengths attribute is ignored as it has no bearing on the
+        # actual structure itself
         return (
             super().compare(other) and
             all(a.compare(b) for a, b in zip(self.pattern, other.pattern)))
@@ -252,7 +223,7 @@ class Scalar(Pattern):
 
     def __init__(self, sample):
         super().__init__()
-        self.values = ScalarStats.from_sample(sample)
+        self.values = Stats.from_sample(sample)
         self.unique = self.values.unique
 
     def __repr__(self):
@@ -376,7 +347,7 @@ class Str(Scalar):
 
     def __init__(self, sample, pattern=None):
         super().__init__(sample)
-        self.lengths = ScalarStats.from_lengths(sample)
+        self.lengths = Stats.from_lengths(sample)
         self.pattern = pattern
 
     def compare(self, other):
