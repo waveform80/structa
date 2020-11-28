@@ -3,10 +3,14 @@
 
 import sys
 import os
+import configparser
 from datetime import datetime
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from pathlib import Path
+
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
-import structa as _setup
+config = configparser.ConfigParser()
+config.read([Path(__file__).parent / '..' / 'setup.cfg'])
+metadata = config['metadata']
 
 # -- General configuration ------------------------------------------------
 
@@ -24,10 +28,12 @@ templates_path = ['_templates']
 source_suffix = '.rst'
 #source_encoding = 'utf-8-sig'
 master_doc = 'index'
-project = _setup.__project__.title()
-copyright = '2017-%s %s' % (datetime.now().year, _setup.__author__)
-version = _setup.__version__
-release = _setup.__version__
+project = metadata['name'].title()
+copyright = '{year} {author}'.format(
+    year=datetime.now().year,
+    author=metadata['author'])
+version = metadata['version']
+release = metadata['version']
 #language = None
 #today_fmt = '%B %d, %Y'
 exclude_patterns = ['_build']
@@ -62,7 +68,7 @@ else:
     html_theme = 'default'
     #html_theme_options = {}
     #html_sidebars = {}
-html_title = '%s %s Documentation' % (project, version)
+html_title = '{project} {version} Documentation'.format(project=project, version=version)
 #html_theme_path = []
 #html_short_title = None
 #html_logo = None
@@ -80,7 +86,7 @@ html_static_path = ['_static']
 #html_show_copyright = True
 #html_use_opensearch = ''
 #html_file_suffix = None
-htmlhelp_basename = '%sdoc' % _setup.__project__
+htmlhelp_basename = '{name}doc'.format(name=metadata['name'])
 
 # Hack to make wide tables work properly in RTD
 # See https://github.com/snide/sphinx_rtd_theme/issues/117 for details
@@ -99,12 +105,12 @@ latex_elements = {
 
 latex_documents = [
     (
-        'index',                       # source start file
-        '%s.tex' % _setup.__project__, # target filename
-        '%s %s Documentation' % (project, version), # title
-        _setup.__author__,             # author
-        'manual',                      # documentclass
-        True,                          # documents ref'd from toctree only
+        'index',            # source start file
+        '{metadata["name"]}.tex'.format(metadata=metadata), # filename
+        '{project} {version} Documentation'.format(project=project, version=version), # title
+        metadata['author'], # author
+        'manual',           # documentclass
+        True,               # documents ref'd from toctree only
     ),
 ]
 
@@ -117,10 +123,10 @@ latex_show_urls = 'footnote'
 
 # -- Options for epub output ----------------------------------------------
 
-epub_basename = _setup.__project__
+epub_basename = metadata['name']
 #epub_theme = 'epub'
 #epub_title = html_title
-epub_author = _setup.__author__
+epub_author = metadata['author']
 epub_identifier = 'https://structa.readthedocs.io/'
 #epub_tocdepth = 3
 epub_show_urls = 'no'
@@ -129,7 +135,13 @@ epub_show_urls = 'no'
 # -- Options for manual page output ---------------------------------------
 
 man_pages = [
-    ('structa', 'structa', 'structa Utility', [_setup.__author__], 1),
+    (
+        metadata['name'],
+        metadata['name'],
+        '{project} Utility'.format(project=project),
+        [metadata['author']],
+        1
+    ),
 ]
 
 man_show_urls = True
