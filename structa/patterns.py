@@ -1,10 +1,10 @@
 from copy import copy
+from numbers import Real
 from datetime import datetime
 from textwrap import indent, shorten
 from functools import partial, total_ordering
 from collections.abc import Mapping
 
-from .chars import Digit, AnyChar
 from .collections import Counter, FrozenCounter
 from .conversions import try_conversion, parse_bool
 from .format import format_int, format_repr
@@ -48,7 +48,7 @@ class Stats:
 
     @classmethod
     def from_sample(cls, sample):
-        assert isinstance(sample, (Counter, FrozenCounter))
+        assert isinstance(sample, (Counter, FrozenCounter)), ('%s is not Counter' % sample)
         assert sample
         keys = sorted(sample)
         card = sum(sample.values())
@@ -92,9 +92,9 @@ class Pattern:
         return NotImplemented
 
     def compare(self, other):
-        # We compare __class__ precisely because a Dict cannot match a Tuple,
-        # etc.
-        return self.__class__ is other.__class__
+        return (
+            isinstance(self, other.__class__) or
+            isinstance(other, self.__class__))
 
 
 class Container(Pattern):
@@ -107,6 +107,16 @@ class Container(Pattern):
 
     def __repr__(self):
         return format_repr(self, lengths=None)
+
+    def __add__(self, other):
+        if self == other:
+            result = copy(self)
+            result.lengths = self.lengths + other.lengths
+            result.pattern = [
+                a + b for a, b in zip(self.pattern, other.pattern)
+            ]
+            return result
+        return NotImplemented
 
     def with_pattern(self, pattern):
         result = copy(self)
@@ -154,10 +164,16 @@ class DictField(Pattern):
     def __str__(self):
         return '{self.key}: {self.pattern}'.format(self=self)
 
+    def __add__(self, other):
+        return DictField(self.key + other.key,
+                         self.pattern + other.pattern)
+
     def compare(self, other):
         return (
             super().compare(other) and
             self.key.compare(other.key) and
+            self.pattern is not None and
+            other.pattern is not None and
             self.pattern.compare(other.pattern))
 
 
@@ -197,10 +213,16 @@ class TupleField(Pattern):
     def __repr__(self):
         return format_repr(self, index=None)
 
+    def __add__(self, other):
+        return TupleField(self.index + other.index,
+                          self.pattern + other.pattern)
+
     def compare(self, other):
         return (
             super().compare(other) and
             self.index.compare(other.index) and
+            self.pattern is not None and
+            other.pattern is not None and
             self.pattern.compare(other.pattern))
 
 
@@ -231,37 +253,47 @@ class Scalar(Pattern):
         self.values = Stats.from_sample(sample)
         self.unique = self.values.unique
 
+    def __add__(self, other):
+        if self == other:
+            if issubclass(self.__class__, other.__class__):
+                result = copy(other)
+            else:
+                result = copy(self)
+            result.values = self.values + other.values
+            result.unique = result.values.unique
+            return result
+        return NotImplemented
+
     def __repr__(self):
         return format_repr(self, values='...')
 
 
-class Bool(Scalar):
+class Float(Scalar):
     __slots__ = ()
-
-    def __str__(self):
-        return 'bool'
 
     @classmethod
     def from_strings(cls, iterable, pattern, bad_threshold=0):
-        false, true = pattern.split('|', 1)
         return StrRepr(
-            cls(
-                try_conversion(
-                    iterable, partial(parse_bool, false=false, true=true),
-                    bad_threshold)
-            ),
-            pattern='{false}|{true}'.format(false=false, true=true)
-        )
+            cls(try_conversion(iterable, float, bad_threshold)),
+            pattern=pattern)
+
+    def __str__(self):
+        return 'float range={min:.1f}..{max:.1f}'.format(
+            min=self.values.min, max=self.values.max)
 
     def validate(self, value):
         return (
-            isinstance(value, bool) or
-            (isinstance(value, int) and value in (0, 1))
+            isinstance(value, float) and
+            self.values.min <= value <= self.values.max
         )
 
 
-class Int(Scalar):
+class Int(Float):
     __slots__ = ()
+
+    # NOTE: Int is a subclass of Float partly to provide a rough immitation of
+    # Python's "numeric tower" (see the numbers module) in permitting an Int
+    # pattern to compare equal to a Float pattern for the purposes of merging
 
     @classmethod
     def from_strings(cls, iterable, pattern, bad_threshold=0):
@@ -288,28 +320,39 @@ class Int(Scalar):
         )
 
 
-class Float(Scalar):
+class Bool(Int):
     __slots__ = ()
+
+    # NOTE: Bool is a subclass of Int; see note in Int for reasons
 
     @classmethod
     def from_strings(cls, iterable, pattern, bad_threshold=0):
+        false, true = pattern.split('|', 1)
         return StrRepr(
-            cls(try_conversion(iterable, float, bad_threshold)),
-            pattern=pattern)
+            cls(
+                try_conversion(
+                    iterable, partial(parse_bool, false=false, true=true),
+                    bad_threshold)
+            ),
+            pattern='{false}|{true}'.format(false=false, true=true)
+        )
 
     def __str__(self):
-        return 'float range={min:.1f}..{max:.1f}'.format(
-            min=self.values.min, max=self.values.max)
+        return 'bool'
 
     def validate(self, value):
         return (
-            isinstance(value, float) and
-            self.values.min <= value <= self.values.max
+            isinstance(value, bool) or
+            (isinstance(value, int) and value in (0, 1))
         )
 
 
 class DateTime(Scalar):
     __slots__ = ()
+
+    # NOTE: There are no circumstances in Python where a datetime instance can
+    # successfully compare equal to a float, in contrast to the fact that False
+    # == 0 == 0.0, so DateTime simply derives from Scalar
 
     @classmethod
     def from_strings(cls, iterable, pattern, bad_threshold=0):
@@ -327,9 +370,7 @@ class DateTime(Scalar):
         dt_counter = Counter()
         for value, count in num_pattern.values.sample.items():
             dt_counter[datetime.fromtimestamp(value)] = count
-        result = NumRepr(
-            cls(dt_counter),
-            pattern=int if isinstance(num_pattern, Int) else float)
+        result = NumRepr(cls(dt_counter), pattern=num_pattern.__class__)
         if isinstance(pattern, StrRepr):
             return pattern.with_inner(result)
         else:
@@ -355,9 +396,6 @@ class Str(Scalar):
         self.lengths = Stats.from_lengths(sample)
         self.pattern = pattern
 
-    def compare(self, other):
-        return super().compare(other) and self.pattern == other.pattern
-
     def __repr__(self):
         return format_repr(self, lengths=None, values='...')
 
@@ -366,10 +404,34 @@ class Str(Scalar):
             return 'str'
         else:
             pattern = ''.join(
-                c if isinstance(c, str) else c.display
+                c if isinstance(c, str) else str(c)
                 for c in self.pattern)
             return 'str pattern={pattern}'.format(
                 pattern=shorten(pattern, width=60, placeholder='...'))
+
+    def __add__(self, other):
+        if self == other:
+            if (
+                self.pattern is None or other.pattern is None or
+                len(self.pattern) != len(other.pattern)
+            ):
+                new_pattern = None
+            else:
+                new_pattern = [
+                    self_char | other_char
+                    for self_char, other_char
+                    in zip(self.pattern, other.pattern)
+                ]
+            result = copy(self)
+            result.values = self.values + other.values
+            result.unique = result.values.unique
+            result.lengths = self.lengths + other.lengths
+            result.pattern = new_pattern
+            return result
+        return NotImplemented
+
+    def compare(self, other):
+        return super().compare(other) and self.pattern == other.pattern
 
     def validate(self, value):
         result = (
@@ -378,16 +440,8 @@ class Str(Scalar):
         )
         if result and self.pattern is not None:
             for c1, c2 in zip(value, self.pattern):
-                if isinstance(c2, str):
-                    if c1 == c2:
-                        continue
-                    else:
-                        return False
-                elif isinstance(c2, Digit):
-                    if c1 in c2.chars:
-                        continue
-                    else:
-                        return False
+                if c1 not in c2:
+                    return False
         return result
 
 
@@ -403,32 +457,63 @@ class Repr(Pattern):
         return self.__class__(inner, self.pattern)
 
     def compare(self, other):
-        return (
-            isinstance(other, Repr) and
-            self.inner.compare(other.inner) and
-            self.pattern == other.pattern)
+        # XXX Should we compare pattern here? Consider case of mistaken octal/
+        # dec pattern when it's actually hex in the merge scenario?
+        return super().compare(other) and self.inner.compare(other.inner)
 
 
 class StrRepr(Repr):
     __slots__ = ()
 
+    int_bases = {'o': 8, 'd': 10, 'x': 16}
+
     def __str__(self):
         return 'str of {self.inner} format={self.pattern}'.format(self=self)
+
+    def __add__(self, other):
+        if self == other:
+            if isinstance(self.inner, other.inner.__class__):
+                child, parent = self.inner, other.inner
+            else:
+                child, parent = other.inner, self.inner
+            if child.__class__ is Int and parent.__class__ is Int:
+                pattern = sorted(child.pattern + parent.pattern,
+                                 key=self.int_bases.get)[-1]
+            else:
+                pattern = parent.pattern
+            return parent.__class__(child.inner + parent.inner, pattern)
+        return NotImplemented
+
+    def compare(self, other):
+        if super().compare(other):
+            if isinstance(self.inner, other.inner.__class__):
+                child, parent = self.inner, other.inner
+            else:
+                child, parent = other.inner, self.inner
+            return {
+                (Bool,     Bool):     lambda: child.pattern == parent.pattern,
+                (Bool,     Int):      lambda: child.pattern == '0|1',
+                (Bool,     Float):    lambda: child.pattern == '0|1',
+                (Int,      Int):      lambda: True,
+                (Int,      Float):    lambda: child.pattern != 'x',
+                (Float,    Float):    lambda: True,
+                (DateTime, DateTime): lambda: child.pattern == parent.pattern,
+                (NumRepr,  NumRepr):  lambda: True,
+            }[child.__class__, parent.__class__]()
+        return False
 
     def validate(self, value):
         if not isinstance(value, str):
             return False
         try:
-            if isinstance(self.inner, Int):
-                bases = {'o': 8, 'd': 10, 'x': 16}
-                value = int(value, base=bases[self.pattern])
-            elif isinstance(self.inner, NumRepr) and self.inner.pattern is int:
-                assert self.pattern == 'd'
-                value = int(value)
-            elif isinstance(self.inner, Float):
-                assert self.pattern == 'f'
-                value = float(value)
-            elif isinstance(self.inner, NumRepr) and self.inner.pattern is float:
+            inner = self.inner
+            if isinstance(self.inner, Int) or (
+                isinstance(self.inner, NumRepr) and self.inner.pattern is Int
+            ):
+                value = int(value, base=self.int_bases[self.pattern])
+            elif isinstance(self.inner, Float) or (
+                isinstance(self.inner, NumRepr) and self.inner.pattern is Float
+            ):
                 assert self.pattern == 'f'
                 value = float(value)
             elif isinstance(self.inner, DateTime):
@@ -448,16 +533,25 @@ class NumRepr(Repr):
     __slots__ = ()
 
     def __str__(self):
-        if self.pattern is int:
+        if self.pattern is Int:
             template = 'int of {self.inner}'
-        elif self.pattern is float:
+        elif self.pattern is Float:
             template = 'float of {self.inner}'
         else:
             assert False
         return template.format(self=self)
 
+    def __add__(self, other):
+        if self == other:
+            if self.pattern is Float or other.pattern is Float:
+                pattern = Float
+            else:
+                pattern = Int
+            return NumRepr(self.inner + other.inner, pattern)
+        return NotImplemented
+
     def validate(self, value):
-        if not isinstance(value, self.pattern):
+        if not isinstance(value, Real):
             return False
         try:
             if isinstance(self.inner, DateTime):
@@ -516,12 +610,13 @@ class Field(Pattern):
         self.value = value
         self.optional = optional
 
-    def compare(self, other):
-        # We deliberately exclude *optional* from consideration here; the
-        # only time a Field is compared is during common sub-tree
-        # elimination where a key might be mandatory in one sub-set but
-        # optional in another
-        return super().compare(other) and self.value == other.value
+    def __str__(self):
+        return repr(self.value) + ('*' if self.optional else '')
+
+    def __add__(self, other):
+        if self == other:
+            return Field(self.value, self.optional or other.optional)
+        return NotImplemented
 
     def __lt__(self, other):
         if isinstance(other, Field):
@@ -533,8 +628,12 @@ class Field(Pattern):
         # instance; note that this implies a Field is effectively immutable
         return hash((self.value,))
 
-    def __str__(self):
-        return repr(self.value) + ('*' if self.optional else '')
+    def compare(self, other):
+        # We deliberately exclude *optional* from consideration here; the
+        # only time a Field is compared is during common sub-tree
+        # elimination where a key might be mandatory in one sub-set but
+        # optional in another
+        return super().compare(other) and self.value == other.value
 
     def validate(self, value):
         return value == self.value
@@ -550,11 +649,11 @@ class Value(Pattern):
         except NameError:
             return super().__new__(cls)
 
-    def __str__(self):
-        return 'value'
-
     def __repr__(self):
         return 'Value()'
+
+    def __str__(self):
+        return 'value'
 
     def validate(self, value):
         return True
@@ -570,11 +669,11 @@ class Empty(Pattern):
         except NameError:
             return super().__new__(cls)
 
-    def __str__(self):
-        return ''
-
     def __repr__(self):
         return 'Empty()'
+
+    def __str__(self):
+        return ''
 
     def validate(self, value):
         return False

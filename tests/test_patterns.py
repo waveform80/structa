@@ -22,6 +22,15 @@ def test_stats():
     assert repr(c) == 'Stats(sample=..., card=3, min=0, max=3, median=1)'
 
 
+def test_stats_merge():
+    s1 = Stats.from_sample(Counter(range(10)))
+    s2 = Stats.from_sample(Counter(range(20)))
+    s3 = s1 + s2
+    assert s3 == Stats.from_sample(Counter(list(range(10)) + list(range(20))))
+    with pytest.raises(TypeError):
+        s1 + []
+
+
 def test_pattern():
     assert Pattern() != None
 

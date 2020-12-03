@@ -8,8 +8,16 @@ from itertools import groupby
 
 from dateutil.relativedelta import relativedelta
 
-from .chars import AnyChar, Digit, OctDigit, DecDigit, HexDigit
 from .conversions import try_conversion
+from .chars import (
+    CharClass,
+    any_char,
+    oct_digit,
+    dec_digit,
+    hex_digit,
+    ident_first,
+    ident_char,
+)
 from .patterns import (
     Stats,
     Container,
@@ -43,10 +51,8 @@ BOOL_PATTERNS = (
 )
 INT_PATTERNS = ('o', 'd', 'x')  # Order matters for these
 FIXED_DATETIME_PATTERNS = {
-    '%Y-%m-%dT%H:%M:%S.%f',
     '%Y-%m-%dT%H:%M:%S',
     '%Y-%m-%dT%H:%M',
-    '%Y-%m-%d %H:%M:%S.%f',
     '%Y-%m-%d %H:%M:%S',
     '%Y-%m-%d %H:%M',
     '%Y-%m-%d',
@@ -54,13 +60,23 @@ FIXED_DATETIME_PATTERNS = {
     '%a, %d %b %Y %H:%M:%S %Z',
 }
 VAR_DATETIME_PATTERNS = {
+    '%Y-%m-%dT%H:%M:%S.%f',
     '%Y-%m-%dT%H:%M:%S.%f%z',
     '%Y-%m-%dT%H:%M:%S%z',
     '%Y-%m-%dT%H:%M%z',
+    '%Y-%m-%d %H:%M:%S.%f',
     '%Y-%m-%d %H:%M:%S.%f%z',
     '%Y-%m-%d %H:%M:%S%z',
     '%Y-%m-%d %H:%M%z',
 }
+
+
+DIGIT_BASES = {
+    16: hex_digit,
+    10: dec_digit,
+    8:  oct_digit,
+}
+DIGITS = set(DIGIT_BASES.values())
 
 
 class ValidationWarning(Warning):
@@ -173,9 +189,11 @@ class Analyzer:
                     keys = self._match(
                         (item.key.value for item in path.pattern),
                         (path,), threshold=0)
-                    # TODO merge template
                     return path.with_pattern([
-                        DictField(keys, path.pattern[0].pattern)
+                        DictField(keys, sum(
+                            (p.pattern for p in path.pattern[1:]),
+                            path.pattern[0].pattern
+                        ))
                     ])
                 return path.with_pattern([
                     DictField(field.key, self._merge(field.pattern))
@@ -480,27 +498,32 @@ class Analyzer:
         pattern = []
         base = 0
         for chars in zip(*items): # transpose
-            chars = set(chars)
-            if len(chars) == 1:
-                pattern.append(chars.pop())
-            elif chars <= HexDigit.chars:
-                pattern.append(Digit)
-                if chars <= OctDigit.chars:
+            chars = CharClass(chars)
+            if chars <= hex_digit:
+                pattern.append('digit')
+                if chars <= oct_digit:
                     base = max(base, 8)
-                elif chars <= DecDigit.chars:
+                elif chars <= dec_digit:
                     base = max(base, 10)
                 else:
                     base = max(base, 16)
             else:
-                pattern.append(AnyChar)
-        pattern = tuple(
-            (
-                HexDigit if base == 16 else
-                DecDigit if base == 10 else
-                OctDigit
-            ) if char == Digit else char
-            for char in pattern
-        )
+                pattern.append(chars)
+        digit = DIGIT_BASES[base]
+        pattern = [digit if char == 'digit' else char for char in pattern]
+        if (
+            pattern[0] <= ident_first and
+            all(c <= ident_char for c in pattern[1:])
+        ):
+            pattern = [ident_first] + [
+                char if len(char) == 1 or char in DIGITS else ident_char
+                for char in pattern[1:]
+            ]
+        else:
+            pattern = [
+                char if len(char) == 1 or char in DIGITS else any_char
+                for char in pattern
+            ]
         return Str(items, pattern)
 
     def _match_numeric_str(self, items, *, bad_threshold=0):
