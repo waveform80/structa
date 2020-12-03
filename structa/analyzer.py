@@ -40,7 +40,6 @@ BOOL_PATTERNS = (
     'no|yes',
     'off|on',
     '|x',
-    '|y',
 )
 INT_PATTERNS = ('o', 'd', 'x')  # Order matters for these
 FIXED_DATETIME_PATTERNS = {
