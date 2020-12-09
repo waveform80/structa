@@ -73,7 +73,7 @@ def test_analyze_dict():
         sample=[data],
         pattern=[
             DictField(
-                key=Str(FrozenCounter(data.keys()), pattern=(AnyChar,)),
+                key=Str(FrozenCounter(data.keys()), pattern=[any_char]),
                 pattern=Int(FrozenCounter(data.values()))
             )
         ])
@@ -101,7 +101,7 @@ def test_analyze_dict_invalid_choices():
                 sample=data,
                 pattern=[
                     DictField(
-                        Str(Counter(k for d in data[:-1] for k in d), pattern=(AnyChar,)),
+                        Str(Counter(k for d in data[:-1] for k in d), pattern=[any_char]),
                         Int(Counter(v for d in data[:-1] for v in d.values()))
                     )
                 ]
@@ -217,8 +217,10 @@ def test_analyze_fixed_oct_str():
     data = ['mode {:03o}'.format(n) for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(data), pattern=('m', 'o', 'd', 'e', ' ',
-                                    OctDigit, OctDigit, OctDigit))]
+        pattern=[Str(Counter(data), pattern=[
+            CharClass('m'), CharClass('o'), CharClass('d'), CharClass('e'),
+            CharClass(' '), oct_digit, oct_digit, oct_digit])
+        ]
     )
 
 
@@ -226,8 +228,10 @@ def test_analyze_fixed_dec_str():
     data = ['num {:03d}'.format(n) for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(data), pattern=('n', 'u', 'm', ' ',
-                                    DecDigit, DecDigit, DecDigit))]
+        pattern=[Str(Counter(data), pattern=[
+            CharClass('n'), CharClass('u'), CharClass('m'), CharClass(' '),
+            dec_digit, dec_digit, dec_digit])
+        ]
     )
 
 
@@ -235,8 +239,10 @@ def test_analyze_fixed_hex_str():
     data = ['hex {:02x}'.format(n) for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(data), pattern=('h', 'e', 'x', ' ',
-                                    HexDigit, HexDigit))]
+        pattern=[Str(Counter(data), pattern=[
+            CharClass('h'), CharClass('e'), CharClass('x'), CharClass(' '),
+            hex_digit, hex_digit])
+        ]
     )
 
 
@@ -451,7 +457,7 @@ def test_analyze_hashes():
         data.append(m.hexdigest())
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(set(data)), pattern=tuple([HexDigit] * 40))])
+        pattern=[Str(Counter(set(data)), pattern=[hex_digit] * 40)])
 
 
 def test_analyze_strings():
@@ -490,7 +496,7 @@ def test_analyze_strings_with_strip():
                     strip_whitespace=True).analyze(data) == List(
         sample=[data],
         pattern=[Str(Counter(stripped),
-                     pattern=(HexDigit, AnyChar, AnyChar))])
+                     pattern=[hex_digit, any_char, any_char])])
 
 
 def test_analyze_empty():

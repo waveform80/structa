@@ -499,7 +499,7 @@ class Analyzer:
         base = 0
         for chars in zip(*items): # transpose
             chars = CharClass(chars)
-            if chars <= hex_digit:
+            if len(chars) > 1 and chars <= hex_digit:
                 pattern.append('digit')
                 if chars <= oct_digit:
                     base = max(base, 8)
@@ -509,8 +509,12 @@ class Analyzer:
                     base = max(base, 16)
             else:
                 pattern.append(chars)
-        digit = DIGIT_BASES[base]
-        pattern = [digit if char == 'digit' else char for char in pattern]
+        try:
+            digit = DIGIT_BASES[base]
+        except KeyError:
+            pass
+        else:
+            pattern = [digit if char == 'digit' else char for char in pattern]
         if (
             pattern[0] <= ident_first and
             all(c <= ident_char for c in pattern[1:])

@@ -59,14 +59,14 @@ def test_dict_with_pattern():
     ]
     pattern = Dict(data, pattern=[
         DictField(
-            Str(FrozenCounter(('a', 'a', 'b')), pattern=(AnyChar,)),
+            Str(FrozenCounter(('a', 'a', 'b')), pattern=[any_char]),
             Int(FrozenCounter((1, 1, 2)))
         )])
     assert pattern.lengths.min == 0
     assert pattern.lengths.max == 2
     assert str(pattern) == '{str pattern=.: int range=1..2}'
     assert repr(pattern) == (
-        'Dict(pattern=[DictField(key=Str(pattern=(AnyChar,), values=..., '
+        'Dict(pattern=[DictField(key=Str(pattern=[AnyChar()], values=..., '
         'unique=False), pattern=Int(values=..., unique=False))])')
 
 
@@ -129,7 +129,7 @@ def test_tuple_with_pattern():
         TupleField(
             Field(0, optional=False),
             Str(Counter(['foo', 'bar', 'baz']),
-                pattern=(AnyChar, AnyChar, AnyChar))),
+                pattern=[any_char, any_char, any_char])),
         TupleField(Field(1, optional=False), Int(Counter([1, 2, 3]))),
     ])
     assert pattern.lengths.min == 2
@@ -137,7 +137,7 @@ def test_tuple_with_pattern():
     assert str(pattern) == '(str pattern=..., int range=1..3)'
     assert repr(pattern) == (
         "Tuple(pattern=["
-        "TupleField(pattern=Str(pattern=(AnyChar, AnyChar, AnyChar), values=..., unique=True)), "
+        "TupleField(pattern=Str(pattern=[AnyChar(), AnyChar(), AnyChar()], values=..., unique=True)), "
         "TupleField(pattern=Int(values=..., unique=True))])")
 
 
@@ -246,10 +246,12 @@ def test_str():
 
 def test_fixed_str():
     data = ['0x{:04x}'.format(n) for n in range(32)]
-    pattern = Str(Counter(data), pattern = ('0', 'x', '0', '0', HexDigit, HexDigit))
+    pattern = Str(Counter(data), pattern=[
+        CharClass('0'), CharClass('x'), CharClass('0'), CharClass('0'),
+        hex_digit, hex_digit])
     assert pattern.lengths.min == pattern.lengths.max == 6
     assert pattern.unique
-    assert str(pattern) == 'str pattern=0x00XX'
+    assert str(pattern) == 'str pattern=0x00[0-9A-Fa-f][0-9A-Fa-f]'
     assert pattern.validate('0x0012')
     assert not pattern.validate('0xff')
     assert not pattern.validate('foobar')
@@ -269,13 +271,13 @@ def test_num_repr():
         dt.datetime.utcfromtimestamp(0),
         dt.datetime.utcfromtimestamp(1),
         dt.datetime.utcfromtimestamp(86400),
-    ))), pattern=int)
+    ))), pattern=Int)
     assert str(pattern) == 'int of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
     pattern = NumRepr(DateTime(Counter((
         dt.datetime.utcfromtimestamp(0.0),
         dt.datetime.utcfromtimestamp(1.0),
         dt.datetime.utcfromtimestamp(86400.0),
-    ))), pattern=float)
+    ))), pattern=Float)
     assert str(pattern) == 'float of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
 
 
@@ -326,9 +328,8 @@ def test_datetime_numrepr():
     }
     numbers = Int(Counter(d.timestamp() for d in data))
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == NumRepr(DateTime(Counter(data)), pattern=int)
+    assert pattern == NumRepr(DateTime(Counter(data)), pattern=Int)
     assert pattern.validate(1000)
-    assert not pattern.validate(1000.0)
     assert not pattern.validate(1000000000000)
     assert not pattern.validate(1200000)
 
@@ -342,14 +343,14 @@ def test_datetime_strrepr_numrepr():
     }
     numbers = StrRepr(Int(Counter(d.timestamp() for d in data)), pattern='d')
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=int), pattern='d')
+    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=Int), pattern='d')
     assert pattern.validate('1000')
     assert not pattern.validate('1000000000000')
     assert not pattern.validate('foo')
 
     numbers = StrRepr(Float(Counter(d.timestamp() for d in data)), pattern='f')
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=float), pattern='f')
+    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=Float), pattern='f')
     assert pattern.validate('1000')
     assert pattern.validate('1000.0')
     assert not pattern.validate('1e12')

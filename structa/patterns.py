@@ -403,9 +403,7 @@ class Str(Scalar):
         if self.pattern is None:
             return 'str'
         else:
-            pattern = ''.join(
-                c if isinstance(c, str) else str(c)
-                for c in self.pattern)
+            pattern = ''.join(str(c) for c in self.pattern)
             return 'str pattern={pattern}'.format(
                 pattern=shorten(pattern, width=60, placeholder='...'))
 
@@ -487,9 +485,9 @@ class StrRepr(Repr):
     def compare(self, other):
         if super().compare(other):
             if isinstance(self.inner, other.inner.__class__):
-                child, parent = self.inner, other.inner
+                child, parent = self, other
             else:
-                child, parent = other.inner, self.inner
+                child, parent = other, self
             return {
                 (Bool,     Bool):     lambda: child.pattern == parent.pattern,
                 (Bool,     Int):      lambda: child.pattern == '0|1',
@@ -499,7 +497,7 @@ class StrRepr(Repr):
                 (Float,    Float):    lambda: True,
                 (DateTime, DateTime): lambda: child.pattern == parent.pattern,
                 (NumRepr,  NumRepr):  lambda: True,
-            }[child.__class__, parent.__class__]()
+            }[child.inner.__class__, parent.inner.__class__]()
         return False
 
     def validate(self, value):
@@ -507,7 +505,10 @@ class StrRepr(Repr):
             return False
         try:
             inner = self.inner
-            if isinstance(self.inner, Int) or (
+            if isinstance(self.inner, Bool):
+                false, true = self.pattern.split('|', 1)
+                value = parse_bool(value, false, true)
+            elif isinstance(self.inner, Int) or (
                 isinstance(self.inner, NumRepr) and self.inner.pattern is Int
             ):
                 value = int(value, base=self.int_bases[self.pattern])
@@ -518,9 +519,6 @@ class StrRepr(Repr):
                 value = float(value)
             elif isinstance(self.inner, DateTime):
                 value = datetime.strptime(value, self.pattern)
-            elif isinstance(self.inner, Bool):
-                false, true = self.pattern.split('|', 1)
-                value = parse_bool(value, false, true)
             else:
                 assert False
         except ValueError:
