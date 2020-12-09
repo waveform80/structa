@@ -519,7 +519,9 @@ class Analyzer:
             pattern[0] <= ident_first and
             all(c <= ident_char for c in pattern[1:])
         ):
-            pattern = [ident_first] + [
+            pattern = [
+                pattern[0] if len(pattern[0]) == 1 else ident_first
+            ] + [
                 char if len(char) == 1 or char in DIGITS else ident_char
                 for char in pattern[1:]
             ]

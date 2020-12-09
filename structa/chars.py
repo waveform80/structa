@@ -26,7 +26,7 @@ class CharClass(frozenset):
             pass
         else:
             raise ValueError('CharClass must be a string or a set of chars')
-        if len(chars) == sys.maxunicode:
+        if len(chars) == sys.maxunicode + 1:
             return AnyChar()
         else:
             return super().__new__(cls, chars)
@@ -99,11 +99,11 @@ class AnyChar:
         return '.'
 
     def __iter__(self):
-        for i in range(sys.maxunicode):
+        for i in range(sys.maxunicode + 1):
             yield chr(i)
 
     def __len__(self):
-        return sys.maxunicode
+        return sys.maxunicode + 1
 
     def __contains__(self, value):
         return isinstance(value, str) and len(value) == 1
@@ -112,7 +112,9 @@ class AnyChar:
         if isinstance(other, AnyChar):
             return True
         elif isinstance(other, CharClass):
-            return len(self) == len(other)
+            # Can never be True as CharClass constructor returns AnyChar if
+            # length of frozenset of chars is maxunicode + 1
+            return False
         else:
             return NotImplemented
 
@@ -120,7 +122,8 @@ class AnyChar:
         if isinstance(other, AnyChar):
             return False
         elif isinstance(other, CharClass):
-            return len(self) != len(other)
+            # See note in __eq__ above
+            return True
         else:
             return NotImplemented
 

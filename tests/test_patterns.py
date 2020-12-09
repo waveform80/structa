@@ -102,6 +102,9 @@ def test_dict_with_long_pattern():
         "pattern=Str(pattern=None, values=..., unique=True)), "
         "DictField(key=Field(value='num', optional=False), "
         "pattern=Int(values=..., unique=True))])")
+    assert pattern + pattern == pattern
+    with pytest.raises(TypeError):
+        pattern + 100
 
 
 def test_tuple():
@@ -151,7 +154,7 @@ def test_tuple_with_long_pattern():
     pattern = List([data], pattern=[Tuple(data, pattern=[
         TupleField(
             Field(0, optional=False),
-             Str(Counter(t[0] for t in data), pattern=tuple('J. R. R. Tolkien'))),
+             Str(Counter(t[0] for t in data), pattern=[CharClass(c) for c in 'J. R. R. Tolkien'])),
         TupleField(
             Field(1, optional=False),
              Str(Counter(t[1] for t in data), pattern=None)),
@@ -171,6 +174,17 @@ def test_tuple_with_long_pattern():
         str of datetime range=1954-07-29 00:00:00..1955-10-20 00:00:00 format=%Y-%m-%d
     )
 ]"""
+    assert repr(pattern) == (
+        "List(pattern=[Tuple(pattern=["
+        "TupleField(pattern=Str(pattern=[" +
+        ', '.join('CharClass({!r})'.format(c) for c in 'J. R. R. Tolkien') +
+        "], values=..., unique=False)), "
+        "TupleField(pattern=Str(pattern=None, values=..., unique=True)), "
+        "TupleField(pattern=StrRepr(inner=DateTime(values=..., unique=True), "
+        "pattern='%Y-%m-%d'))"
+        "])])"
+    )
+    assert pattern + pattern == pattern
 
 
 def test_list():
@@ -242,6 +256,9 @@ def test_str():
     assert str(pattern) == 'str'
     assert pattern.validate('blah')
     assert not pattern.validate('')
+    assert pattern + pattern == pattern
+    with pytest.raises(TypeError):
+        pattern + 100
 
 
 def test_fixed_str():
@@ -289,6 +306,9 @@ def test_int():
     assert not pattern.validate(1)
     assert not pattern.validate('2000')
     assert str(pattern) == 'str of int range=1..1.0K format=d'
+    assert pattern + pattern == pattern
+    with pytest.raises(TypeError):
+        pattern + 100
 
 
 def test_float():
@@ -299,6 +319,9 @@ def test_float():
     assert not pattern.validate(1.0)
     assert not pattern.validate('2000.0')
     assert str(pattern) == 'str of float range=0.0..1000.0 format=f'
+    assert pattern + pattern == pattern
+    with pytest.raises(TypeError):
+        pattern + 100
 
 
 def test_datetime():
@@ -319,7 +342,6 @@ def test_datetime():
 
 
 def test_datetime_numrepr():
-    iso_fmt = '%Y-%m-%d %H:%M:%S'
     data = {
         dt.datetime.fromtimestamp(0),
         dt.datetime.fromtimestamp(1),
@@ -330,6 +352,7 @@ def test_datetime_numrepr():
     pattern = DateTime.from_numbers(numbers)
     assert pattern == NumRepr(DateTime(Counter(data)), pattern=Int)
     assert pattern.validate(1000)
+    assert not pattern.validate('1000')
     assert not pattern.validate(1000000000000)
     assert not pattern.validate(1200000)
 
@@ -363,6 +386,51 @@ def test_bool():
     assert pattern.validate('t')
     assert not pattern.validate('true')
     assert not pattern.validate(True)
+    assert pattern + pattern == pattern
+    with pytest.raises(TypeError):
+        pattern + 100
+
+
+def test_scalar_add():
+    data = {1, 2, 3, 1000}
+    int_pattern = Int(Counter(data))
+    bool_pattern = Bool(Counter((0, 1)))
+    assert int_pattern + bool_pattern == int_pattern
+    with pytest.raises(TypeError):
+        data = ['foo', 'bar', 'baz', 'quux']
+        str_pattern = Str(Counter(data))
+        int_pattern + str_pattern
+
+
+def test_strrepr_add():
+    bool_pattern = Bool.from_strings(Counter(('0', '1')), '0|1')
+    data = {1, 2, 3, 1000}
+    int_pattern = Int.from_strings(Counter(str(i) for i in data), 'd', True)
+    assert int_pattern + bool_pattern == int_pattern
+    data = {1, 2, 3, 1000}
+    oct_pattern = Int.from_strings(Counter(oct(i) for i in data), 'o', True)
+    hex_pattern = Int.from_strings(Counter(hex(i) for i in data), 'x', True)
+    assert oct_pattern + hex_pattern == hex_pattern
+    str_pattern = Str(Counter(('0', '1')))
+    assert bool_pattern != str_pattern
+
+
+def test_numrepr_add():
+    data = {
+        dt.datetime.fromtimestamp(0),
+        dt.datetime.fromtimestamp(1),
+        dt.datetime.fromtimestamp(86400),
+        dt.datetime.fromtimestamp(100000),
+    }
+    numbers = Int(Counter(d.timestamp() for d in data))
+    int_pattern = DateTime.from_numbers(numbers)
+    assert int_pattern + int_pattern == int_pattern
+    numbers = Float(Counter(d.timestamp() for d in data))
+    float_pattern = DateTime.from_numbers(numbers)
+    assert int_pattern + float_pattern == float_pattern
+    with pytest.raises(TypeError):
+        str_pattern = Str(Counter(('0', '1')))
+        int_pattern + str_pattern
 
 
 def test_url():
@@ -377,7 +445,7 @@ def test_url():
     assert not pattern.validate(100)
 
 
-def test_choices():
+def test_fields():
     data = {'url'}
     pattern = Fields({Field(s, False) for s in data})
     assert str(pattern) == "<'url'>"
@@ -390,6 +458,19 @@ def test_choices():
     assert pattern.validate('url')
     assert not pattern.validate('foo')
     assert not pattern.validate(1)
+
+    f1 = Field('url', False)
+    f2 = Field('url', False)
+    f3 = Field('count', False)
+    assert f1 == f2
+    assert f1 + f2 == f1
+    assert f2 != f3
+    assert f3 < f2
+    assert f2 > f3
+    with pytest.raises(TypeError):
+        f2 + f3
+    with pytest.raises(TypeError):
+        f2 > 'abc'
 
 
 def test_value():
@@ -412,4 +493,3 @@ def test_empty():
     assert not pattern.validate('foo')
     assert Empty() == Empty()
     assert Empty() != Value()
-

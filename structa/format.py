@@ -35,7 +35,7 @@ def format_chars(chars, range_sep='-', list_sep=''):
     elif len(chars) == 1:
         return '{0}'.format(*chars)
     elif len(chars) == 2:
-        return '{0}{sep}{1}'.format(*chars, sep=list_sep)
+        return '{0}{sep}{1}'.format(*sorted(chars), sep=list_sep)
     else:
         ranges = []
         start = None

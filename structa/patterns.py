@@ -428,9 +428,6 @@ class Str(Scalar):
             return result
         return NotImplemented
 
-    def compare(self, other):
-        return super().compare(other) and self.pattern == other.pattern
-
     def validate(self, value):
         result = (
             isinstance(value, str) and
@@ -471,10 +468,10 @@ class StrRepr(Repr):
     def __add__(self, other):
         if self == other:
             if isinstance(self.inner, other.inner.__class__):
-                child, parent = self.inner, other.inner
+                child, parent = self, other
             else:
-                child, parent = other.inner, self.inner
-            if child.__class__ is Int and parent.__class__ is Int:
+                child, parent = other, self
+            if child.inner.__class__ is Int and parent.inner.__class__ is Int:
                 pattern = sorted(child.pattern + parent.pattern,
                                  key=self.int_bases.get)[-1]
             else:

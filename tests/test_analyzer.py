@@ -34,9 +34,28 @@ def test_flatten():
 def test_analyze_progress():
     a = Analyzer(bad_threshold=0, track_progress=True)
     assert a.progress is None
-    a.analyze(list(range(100)))
+    a._top_ids = set(range(1000))
+    a._top_ids_card = 1000
+    assert a.progress == 0
+    a._top_ids -= set(range(500))
+    assert a.progress == Fraction(1, 10)
+    a._top_ids = set()
+    assert a.progress == Fraction(2, 10)
+    a._all_ids = set(range(1000))
+    a._all_ids_card = 1000
+    assert a.progress == Fraction(2, 10)
+    a._all_ids -= set(range(500))
+    assert a.progress == Fraction(6, 10)
+    a._all_ids = set()
     assert a.progress == 1
-    a.analyze({1: 2, 3: 4})
+
+
+def test_analyze_real_progress():
+    a = Analyzer(bad_threshold=0, track_progress=True)
+    assert a.progress is None
+    a.analyze(1)
+    assert a.progress == 1
+    a.analyze(list(range(1000)))
     assert a.progress == 1
 
 
@@ -508,3 +527,69 @@ def test_analyze_value():
         __hash__ = None
     data = [Foo(), Foo(), Foo()]
     assert Analyzer().analyze(data) == List(sample=[data], pattern=[Value()])
+
+
+def test_analyze_merge():
+    releases = [
+        'precise',
+        'raring',
+        'saucy',
+        'trusty',
+        'utopic',
+        'vivid',
+        'wily',
+        'xenial',
+        'yakkety',
+        'zesty',
+    ]
+    data = {
+        release: {
+            'date': dt.datetime(2000, 1, 1) +
+                    dt.timedelta(days=random.randint(1000, 2000)),
+            'count': random.randint(1000, 2000),
+            'name': release,
+            'numbers': [
+                random.randint(0, 10)
+                for i in range(random.randint(0, 100))
+            ],
+        }
+        for release in releases
+    }
+    print(Analyzer().analyze(data))
+    assert Analyzer().analyze(data) == Dict(
+        sample=[data],
+        pattern=[
+            DictField(
+                key=Str(Counter(releases)),
+                pattern=Dict(
+                    sample=data,
+                    pattern=[
+                        DictField(
+                            Field('count', False),
+                            Int(Counter(r['count'] for r in data.values()))
+                        ),
+                        DictField(
+                            Field('date', False),
+                            DateTime(Counter(r['date'] for r in data.values()))
+                        ),
+                        DictField(
+                            Field('name', False),
+                            Str(Counter(r['name'] for r in data.values()))
+                        ),
+                        DictField(
+                            Field('numbers', False),
+                            List(
+                                sample=[r['numbers'] for r in data.values()],
+                                pattern=[
+                                    Int(Counter(
+                                        i for r in data.values()
+                                        for i in r['numbers']
+                                    ))
+                                ]
+                            )
+                        ),
+                    ]
+                )
+            )
+        ]
+    )

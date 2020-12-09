@@ -48,4 +48,3 @@ def test_parse_duration_or_timestamp():
     assert parse_duration_or_timestamp('01:30:00') == dt.datetime.today().replace(
         hour=1, minute=30, second=0, microsecond=0)
     assert parse_duration_or_timestamp('2000-01-01 00:00:00') == dt.datetime(2000, 1, 1, 0, 0, 0)
-
