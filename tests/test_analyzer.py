@@ -7,7 +7,7 @@ from fractions import Fraction
 import pytest
 
 from structa.chars import *
-from structa.patterns import *
+from structa.types import *
 from structa.analyzer import *
 
 
@@ -62,27 +62,27 @@ def test_analyze_real_progress():
 def test_analyze_list():
     data = list(range(100))
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[data], pattern=[Int(FrozenCounter(data))])
+        sample=[data], content=[Int(FrozenCounter(data))])
 
 
 def test_analyze_tuple():
     data = tuple(range(10))
     assert Analyzer(bad_threshold=0).analyze(data) == Tuple(
         sample=[data],
-        pattern=[
+        content=[
             TupleField(
                 index=Field(i, False),
-                pattern=Int(FrozenCounter((i,)))
+                value=Int(FrozenCounter((i,)))
             )
             for i in range(10)
         ])
     data = tuple(range(100))
     assert Analyzer().analyze(data) == Tuple(
         sample=[data],
-        pattern=[
+        content=[
             TupleField(
                 index=Int(FrozenCounter(range(100))),
-                pattern=Int(FrozenCounter(data)))
+                value=Int(FrozenCounter(data)))
         ])
 
 
@@ -90,10 +90,10 @@ def test_analyze_dict():
     data = {chr(ord('A') + n): n for n in range(50)}
     assert Analyzer(bad_threshold=0).analyze(data) == Dict(
         sample=[data],
-        pattern=[
+        content=[
             DictField(
                 key=Str(FrozenCounter(data.keys()), pattern=[any_char]),
-                pattern=Int(FrozenCounter(data.values()))
+                value=Int(FrozenCounter(data.values()))
             )
         ])
 
@@ -102,9 +102,9 @@ def test_analyze_dict_optional_choices():
     data = [{'foo': 1, 'bar': 2}] * 999
     data.append({'foo': 1})
     assert Analyzer(bad_threshold=2/100).analyze(data) == List(
-        sample=[data], pattern=[Dict(
+        sample=[data], content=[Dict(
             sample=data,
-            pattern=[
+            content=[
                 DictField(Field('bar', True), Int(Counter((2,) * 999))),
                 DictField(Field('foo', False), Int(Counter((1,) * 1000))),
             ]
@@ -116,9 +116,9 @@ def test_analyze_dict_invalid_choices():
     data.append({'foo': 'bar'})
     with pytest.warns(ValidationWarning):
         assert Analyzer(bad_threshold=1/100).analyze(data) == List(
-            sample=[data], pattern=[Dict(
+            sample=[data], content=[Dict(
                 sample=data,
-                pattern=[
+                content=[
                     DictField(
                         Str(Counter(k for d in data[:-1] for k in d), pattern=[any_char]),
                         Int(Counter(v for d in data[:-1] for v in d.values()))
@@ -131,12 +131,12 @@ def test_analyze_dict_of_dicts():
     data = {n: {'foo': n, 'bar': n} for n in range(99)}
     assert Analyzer().analyze(data) == Dict(
         sample=[data],
-        pattern=[
+        content=[
             DictField(
                 Int(Counter(data.keys())),
                 Dict(
                     sample=data.values(),
-                    pattern=[
+                    content=[
                         DictField(Field('bar', False), Int(Counter(range(99)))),
                         DictField(Field('foo', False), Int(Counter(range(99)))),
                     ])
@@ -151,11 +151,11 @@ def test_analyze_dict_keyed_by_tuple():
     }
     assert Analyzer().analyze(data) == Dict(
         sample=[data],
-        pattern=[
+        content=[
             DictField(
                 Tuple(
                     sample=list(data.keys()),
-                    pattern=[
+                    content=[
                         TupleField(Field(0, False), Int(Counter(range(50)))),
                         TupleField(Field(1, False), Int(Counter(range(1, 51)))),
                     ]),
@@ -171,9 +171,9 @@ def test_analyze_tuple_optional_fields():
     data.append((100,))
     assert Analyzer().analyze(data) == List(
         sample=[data],
-        pattern=[Tuple(
+        content=[Tuple(
             sample=data,
-            pattern=[
+            content=[
                 TupleField(Field(0, False), Int(Counter(range(101)))),
                 TupleField(Field(1, True), Int(Counter(range(1, 101)))),
             ]
@@ -190,9 +190,9 @@ def test_analyze_namedtuples_optional_fields():
     data.append(t2(100, 101))
     assert Analyzer().analyze(data) == List(
         sample=[data],
-        pattern=[Tuple(
+        content=[Tuple(
             sample=data,
-            pattern=[
+            content=[
                 TupleField(Field(0, False), Int(Counter(range(101)))),
                 TupleField(Field(1, False), Int(Counter(range(1, 102)))),
                 TupleField(Field(2, True), Int(Counter(range(2, 102)))),
@@ -207,9 +207,9 @@ def test_analyze_lists_as_tuples():
     ]
     assert Analyzer().analyze(data) == List(
         sample=[data],
-        pattern=[Tuple(
+        content=[Tuple(
             sample=data,
-            pattern=[
+            content=[
                 TupleField(Field(0, False), Int(Counter(range(100)))),
                 TupleField(Field(1, False), Int(Counter(range(1, 101)))),
                 TupleField(Field(2, False), Int(Counter(range(2, 102)))),
@@ -220,7 +220,7 @@ def test_analyze_lists_as_tuples():
 def test_analyze_bools():
     data = [bool(i % 2) for i in range(1000)]
     assert Analyzer(field_threshold=0).analyze(data) == List(
-        sample=[data], pattern=[Bool(FrozenCounter(data))]
+        sample=[data], content=[Bool(FrozenCounter(data))]
     )
 
 
@@ -228,7 +228,7 @@ def test_analyze_int_bases():
     data = [hex(n) for n in random.sample(range(1000000), 1000)]
     data.append('0xA')  # Ensure there's at least one value with an alpha char
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[data], pattern=[Int.from_strings(Counter(data), pattern='x')]
+        sample=[data], content=[Int.from_strings(Counter(data), pattern='x')]
     )
 
 
@@ -236,7 +236,7 @@ def test_analyze_fixed_oct_str():
     data = ['mode {:03o}'.format(n) for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(data), pattern=[
+        content=[Str(Counter(data), pattern=[
             CharClass('m'), CharClass('o'), CharClass('d'), CharClass('e'),
             CharClass(' '), oct_digit, oct_digit, oct_digit])
         ]
@@ -247,7 +247,7 @@ def test_analyze_fixed_dec_str():
     data = ['num {:03d}'.format(n) for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(data), pattern=[
+        content=[Str(Counter(data), pattern=[
             CharClass('n'), CharClass('u'), CharClass('m'), CharClass(' '),
             dec_digit, dec_digit, dec_digit])
         ]
@@ -258,7 +258,7 @@ def test_analyze_fixed_hex_str():
     data = ['hex {:02x}'.format(n) for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(data), pattern=[
+        content=[Str(Counter(data), pattern=[
             CharClass('h'), CharClass('e'), CharClass('x'), CharClass(' '),
             hex_digit, hex_digit])
         ]
@@ -275,7 +275,7 @@ def test_analyze_datetimes():
     ]
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[DateTime(FrozenCounter(data))])
+        content=[DateTime(FrozenCounter(data))])
 
 
 def test_analyze_datetime_str():
@@ -289,7 +289,7 @@ def test_analyze_datetime_str():
     data = [date.strftime('%Y-%m-%d %H:%M:%S') for date in dates]
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[StrRepr(DateTime(Counter(dates)), pattern='%Y-%m-%d %H:%M:%S')])
+        content=[StrRepr(DateTime(Counter(dates)), pattern='%Y-%m-%d %H:%M:%S')])
 
 
 def test_analyze_datetime_str_varlen():
@@ -306,7 +306,7 @@ def test_analyze_datetime_str_varlen():
     ]
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[StrRepr(DateTime(Counter(dates)), pattern='%Y-%m-%d %H:%M:%S%z')])
+        content=[StrRepr(DateTime(Counter(dates)), pattern='%Y-%m-%d %H:%M:%S%z')])
 
 
 def test_analyze_datetime_float():
@@ -316,7 +316,7 @@ def test_analyze_datetime_float():
     data = list(frange(start, finish, step=86400.0))
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[NumRepr(
+        content=[NumRepr(
             DateTime(Counter(dt.datetime.fromtimestamp(n) for n in data)),
             pattern=float)]
     )
@@ -330,7 +330,7 @@ def test_analyze_datetime_float_str():
     from pprint import pprint; pprint(data)
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[StrRepr(NumRepr(
+        content=[StrRepr(NumRepr(
             DateTime(Counter(dt.datetime.fromtimestamp(float(n)) for n in data)),
             pattern=float), pattern='f')]
     )
@@ -349,7 +349,7 @@ def test_analyze_datetime_bad_range():
                     max_timestamp=dt.datetime.fromtimestamp(finish)
                     ).analyze(data) == List(
         sample=[data],
-        pattern=[Float(Counter(data))])
+        content=[Float(Counter(data))])
 
 
 def test_analyze_any_value_list():
@@ -359,7 +359,7 @@ def test_analyze_any_value_list():
         list(chr(ord('A') + n) for n in range(26))
     )
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[data], pattern=[Value()])
+        sample=[data], content=[Value()])
 
 
 def test_analyze_strs_with_blanks():
@@ -378,7 +378,7 @@ def test_analyze_strs_with_blanks():
     random.shuffle(data)
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[StrRepr(DateTime(Counter(dates)),
+        content=[StrRepr(DateTime(Counter(dates)),
                          pattern='%Y-%m-%d %H:%M:%S')])
 
 
@@ -395,7 +395,7 @@ def test_analyze_too_many_blanks():
     random.shuffle(data)
     assert Analyzer(bad_threshold=0, empty_threshold=0.4).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(data), pattern=None)])
+        content=[Str(Counter(data), pattern=None)])
 
 
 def test_analyze_unique_list_with_bad_data():
@@ -415,7 +415,7 @@ def test_analyze_unique_list_with_bad_data():
     random.shuffle(data)
     assert Analyzer(bad_threshold=0.02).analyze(data) == List(
         sample=[data],
-        pattern=[StrRepr(DateTime(Counter(dates)),
+        content=[StrRepr(DateTime(Counter(dates)),
                          pattern='%Y-%m-%d %H:%M:%S')])
 
 
@@ -435,7 +435,7 @@ def test_analyze_non_unique_list_with_bad_data():
     random.shuffle(data)
     assert Analyzer(bad_threshold=Fraction(2, 1000)).analyze(data) == List(
         sample=[data],
-        pattern=[StrRepr(DateTime(Counter(dates)),
+        content=[StrRepr(DateTime(Counter(dates)),
                          pattern='%Y-%m-%d %H:%M:%S')])
 
 
@@ -446,7 +446,7 @@ def test_analyze_semi_unique_list_with_bad_data():
     random.shuffle(data)
     assert Analyzer(bad_threshold=Fraction(2, 1000)).analyze(data) == List(
         sample=[data],
-        pattern=[StrRepr(Int(Counter(ints)), pattern='d')])
+        content=[StrRepr(Int(Counter(ints)), pattern='d')])
 
 
 def test_analyze_url_list():
@@ -465,7 +465,7 @@ def test_analyze_url_list():
     ]
     assert Analyzer(field_threshold=5, bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[URL(FrozenCounter(data))])
+        content=[URL(FrozenCounter(data))])
 
 
 def test_analyze_hashes():
@@ -476,7 +476,7 @@ def test_analyze_hashes():
         data.append(m.hexdigest())
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(set(data)), pattern=[hex_digit] * 40)])
+        content=[Str(Counter(set(data)), pattern=[hex_digit] * 40)])
 
 
 def test_analyze_strings():
@@ -500,7 +500,7 @@ def test_analyze_strings():
     ]
     assert Analyzer(field_threshold=5, bad_threshold=0).analyze(data) == List(
         sample=[data],
-        pattern=[Str(FrozenCounter(data))])
+        content=[Str(FrozenCounter(data))])
 
 
 def test_analyze_strings_with_strip():
@@ -514,19 +514,19 @@ def test_analyze_strings_with_strip():
     assert Analyzer(field_threshold=0, bad_threshold=0,
                     strip_whitespace=True).analyze(data) == List(
         sample=[data],
-        pattern=[Str(Counter(stripped),
+        content=[Str(Counter(stripped),
                      pattern=[hex_digit, any_char, any_char])])
 
 
 def test_analyze_empty():
-    assert Analyzer().analyze([]) == List(sample=[[]], pattern=[Empty()])
+    assert Analyzer().analyze([]) == List(sample=[[]], content=[Empty()])
 
 
 def test_analyze_value():
     class Foo:
         __hash__ = None
     data = [Foo(), Foo(), Foo()]
-    assert Analyzer().analyze(data) == List(sample=[data], pattern=[Value()])
+    assert Analyzer().analyze(data) == List(sample=[data], content=[Value()])
 
 
 def test_analyze_merge():
@@ -550,7 +550,8 @@ def test_analyze_merge():
             'name': release,
             'numbers': [
                 random.randint(0, 10)
-                for i in range(random.randint(0, 100))
+                # XXX What about the empty case?
+                for i in range(random.randint(1, 100))
             ],
         }
         for release in releases
@@ -558,12 +559,12 @@ def test_analyze_merge():
     print(Analyzer().analyze(data))
     assert Analyzer().analyze(data) == Dict(
         sample=[data],
-        pattern=[
+        content=[
             DictField(
                 key=Str(Counter(releases)),
-                pattern=Dict(
+                value=Dict(
                     sample=data,
-                    pattern=[
+                    content=[
                         DictField(
                             Field('count', False),
                             Int(Counter(r['count'] for r in data.values()))
@@ -580,7 +581,7 @@ def test_analyze_merge():
                             Field('numbers', False),
                             List(
                                 sample=[r['numbers'] for r in data.values()],
-                                pattern=[
+                                content=[
                                     Int(Counter(
                                         i for r in data.values()
                                         for i in r['numbers']

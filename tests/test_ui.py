@@ -9,7 +9,7 @@ import pytest
 from dateutil.relativedelta import relativedelta
 
 from structa.analyzer import ValidationWarning
-from structa.patterns import *
+from structa.types import *
 from structa import ui
 
 
@@ -103,7 +103,7 @@ def test_main(tmpdir, capsys):
         json.dump(data, f)
     assert ui.main([filename]) == 0
     assert capsys.readouterr().out.strip() == str(List(
-        sample=[data], pattern=[Int(Counter(data))]))
+        sample=[data], content=[Int(Counter(data))]))
 
 
 def test_debug(tmpdir, capsys):

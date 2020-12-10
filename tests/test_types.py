@@ -4,7 +4,7 @@ from collections import namedtuple, Counter
 import pytest
 
 from structa.chars import *
-from structa.patterns import *
+from structa.types import *
 
 
 def test_stats():
@@ -32,7 +32,7 @@ def test_stats_merge():
 
 
 def test_pattern():
-    assert Pattern() != None
+    assert Type() != None
 
 
 def test_dict():
@@ -44,9 +44,9 @@ def test_dict():
     pattern = Dict(data)
     assert pattern.lengths.min == 0
     assert pattern.lengths.max == 2
-    assert pattern.pattern is None
+    assert pattern.content is None
     assert str(pattern) == '{}'
-    assert repr(pattern) == 'Dict(pattern=None)'
+    assert repr(pattern) == 'Dict(content=None)'
     assert pattern.validate({})
     assert not pattern.validate('foo')
 
@@ -57,7 +57,7 @@ def test_dict_with_pattern():
         {'a': 1},
         {'a': 1, 'b': 2},
     ]
-    pattern = Dict(data, pattern=[
+    pattern = Dict(data, content=[
         DictField(
             Str(FrozenCounter(('a', 'a', 'b')), pattern=[any_char]),
             Int(FrozenCounter((1, 1, 2)))
@@ -66,8 +66,8 @@ def test_dict_with_pattern():
     assert pattern.lengths.max == 2
     assert str(pattern) == '{str pattern=.: int range=1..2}'
     assert repr(pattern) == (
-        'Dict(pattern=[DictField(key=Str(pattern=[AnyChar()], values=..., '
-        'unique=False), pattern=Int(values=..., unique=False))])')
+        'Dict(content=[DictField(key=Str(pattern=[AnyChar()], values=..., '
+        'unique=False), value=Int(values=..., unique=False))])')
 
 
 def test_dict_with_long_pattern():
@@ -77,7 +77,7 @@ def test_dict_with_long_pattern():
         {'num': 3, 'label': 'baz'},
         {'num': 4, 'label': 'quux', 'active': 'f'},
     ]
-    pattern = Dict(data, pattern=[
+    pattern = Dict(data, content=[
         DictField(
             Field('active', optional=True),
             StrRepr(Bool(Counter({False, True})), pattern="f|t")),
@@ -90,18 +90,18 @@ def test_dict_with_long_pattern():
     assert pattern.lengths.max == 3
     assert str(pattern) == """\
 {
-    'active'*: str of bool format=f|t,
+    'active'*: str of bool pattern=f|t,
     'label': str,
     'num': int range=1..4
 }"""
     assert repr(pattern) == (
-        "Dict(pattern=["
+        "Dict(content=["
         "DictField(key=Field(value='active', optional=True), "
-        "pattern=StrRepr(inner=Bool(values=..., unique=True), pattern='f|t')), "
+        "value=StrRepr(content=Bool(values=..., unique=True), pattern='f|t')), "
         "DictField(key=Field(value='label', optional=False), "
-        "pattern=Str(pattern=None, values=..., unique=True)), "
+        "value=Str(pattern=None, values=..., unique=True)), "
         "DictField(key=Field(value='num', optional=False), "
-        "pattern=Int(values=..., unique=True))])")
+        "value=Int(values=..., unique=True))])")
     assert pattern + pattern == pattern
     with pytest.raises(TypeError):
         pattern + 100
@@ -117,7 +117,7 @@ def test_tuple():
     assert pattern.lengths.min == 0
     assert pattern.lengths.max == 3
     assert str(pattern) == '()'
-    assert repr(pattern) == 'Tuple(pattern=None)'
+    assert repr(pattern) == 'Tuple(content=None)'
     assert pattern.validate(())
     assert not pattern.validate('foo')
 
@@ -128,7 +128,7 @@ def test_tuple_with_pattern():
         ('bar', 2),
         ('baz', 3),
     ]
-    pattern = Tuple(data, pattern=[
+    pattern = Tuple(data, content=[
         TupleField(
             Field(0, optional=False),
             Str(Counter(['foo', 'bar', 'baz']),
@@ -139,9 +139,9 @@ def test_tuple_with_pattern():
     assert pattern.lengths.max == 2
     assert str(pattern) == '(str pattern=..., int range=1..3)'
     assert repr(pattern) == (
-        "Tuple(pattern=["
-        "TupleField(pattern=Str(pattern=[AnyChar(), AnyChar(), AnyChar()], values=..., unique=True)), "
-        "TupleField(pattern=Int(values=..., unique=True))])")
+        "Tuple(content=["
+        "TupleField(value=Str(pattern=[AnyChar(), AnyChar(), AnyChar()], values=..., unique=True)), "
+        "TupleField(value=Int(values=..., unique=True))])")
 
 
 def test_tuple_with_long_pattern():
@@ -151,16 +151,16 @@ def test_tuple_with_long_pattern():
         book('J. R. R. Tolkien', 'The Two Towers', '1954-11-11'),
         book('J. R. R. Tolkien', 'The Return of the King', '1955-10-20'),
     ]
-    pattern = List([data], pattern=[Tuple(data, pattern=[
+    pattern = List([data], content=[Tuple(data, content=[
         TupleField(
             Field(0, optional=False),
-             Str(Counter(t[0] for t in data), pattern=[CharClass(c) for c in 'J. R. R. Tolkien'])),
+            Str(Counter(t[0] for t in data), pattern=[CharClass(c) for c in 'J. R. R. Tolkien'])),
         TupleField(
             Field(1, optional=False),
-             Str(Counter(t[1] for t in data), pattern=None)),
+            Str(Counter(t[1] for t in data), pattern=None)),
         TupleField(
             Field(2, optional=False),
-             StrRepr(
+            StrRepr(
                  DateTime(Counter(dt.datetime.strptime(t[2], '%Y-%m-%d') for t in data)),
                  pattern='%Y-%m-%d'
             ))
@@ -171,16 +171,16 @@ def test_tuple_with_long_pattern():
     (
         str pattern=J. R. R. Tolkien,
         str,
-        str of datetime range=1954-07-29 00:00:00..1955-10-20 00:00:00 format=%Y-%m-%d
+        str of datetime range=1954-07-29 00:00:00..1955-10-20 00:00:00 pattern=%Y-%m-%d
     )
 ]"""
     assert repr(pattern) == (
-        "List(pattern=[Tuple(pattern=["
-        "TupleField(pattern=Str(pattern=[" +
+        "List(content=[Tuple(content=["
+        "TupleField(value=Str(pattern=[" +
         ', '.join('CharClass({!r})'.format(c) for c in 'J. R. R. Tolkien') +
         "], values=..., unique=False)), "
-        "TupleField(pattern=Str(pattern=None, values=..., unique=True)), "
-        "TupleField(pattern=StrRepr(inner=DateTime(values=..., unique=True), "
+        "TupleField(value=Str(pattern=None, values=..., unique=True)), "
+        "TupleField(value=StrRepr(content=DateTime(values=..., unique=True), "
         "pattern='%Y-%m-%d'))"
         "])])"
     )
@@ -196,7 +196,7 @@ def test_list():
     pattern = List(data)
     assert pattern.lengths.min == 0
     assert pattern.lengths.max == 3
-    assert pattern.pattern is None
+    assert pattern.content is None
     assert str(pattern) == '[]'
     assert pattern.validate([])
     assert not pattern.validate('foo')
@@ -208,10 +208,10 @@ def test_list_with_pattern():
         [1, 2, 3],
         [1, 2, 3, 4],
     ]
-    pattern = List(data, pattern=[Int(Counter(j for i in data for j in i))])
+    pattern = List(data, content=[Int(Counter(j for i in data for j in i))])
     assert pattern.lengths.min == 2
     assert pattern.lengths.max == 4
-    assert pattern.pattern is not None
+    assert pattern.content is not None
     assert str(pattern) == '[int range=1..4]'
 
 
@@ -224,8 +224,8 @@ def test_list_with_long_pattern():
             {'num': 4, 'label': 'quux', 'active': 'f'},
         ]
     ]
-    pattern = List(data, pattern=[Dict(
-        data[0], pattern=[
+    pattern = List(data, content=[Dict(
+        data[0], content=[
             DictField(
                 Field('active', optional=True),
                 StrRepr(Bool(Counter({False, True})), pattern="f|t")),
@@ -239,7 +239,7 @@ def test_list_with_long_pattern():
     assert str(pattern) == """\
 [
     {
-        'active'*: str of bool format=f|t,
+        'active'*: str of bool pattern=f|t,
         'label': str,
         'num': int range=1..4
     }
@@ -277,7 +277,7 @@ def test_fixed_str():
 
 def test_str_repr():
     pattern = StrRepr(Int(Counter({1, 2, 3, 4})), pattern='d')
-    assert str(pattern) == 'str of int range=1..4 format=d'
+    assert str(pattern) == 'str of int range=1..4 pattern=d'
     assert pattern.validate('1')
     assert not pattern.validate(1)
     assert not pattern.validate('a')
@@ -305,7 +305,7 @@ def test_int():
     assert pattern.validate('5')
     assert not pattern.validate(1)
     assert not pattern.validate('2000')
-    assert str(pattern) == 'str of int range=1..1.0K format=d'
+    assert str(pattern) == 'str of int range=1..1.0K pattern=d'
     assert pattern + pattern == pattern
     with pytest.raises(TypeError):
         pattern + 100
@@ -318,7 +318,7 @@ def test_float():
     assert pattern.validate('1.0')
     assert not pattern.validate(1.0)
     assert not pattern.validate('2000.0')
-    assert str(pattern) == 'str of float range=0.0..1000.0 format=f'
+    assert str(pattern) == 'str of float range=0.0..1000.0 pattern=f'
     assert pattern + pattern == pattern
     with pytest.raises(TypeError):
         pattern + 100
@@ -338,7 +338,7 @@ def test_datetime():
     assert pattern.validate('1970-01-01 00:30:00')
     assert not pattern.validate(86400)
     assert not pattern.validate('1980-01-01 00:00:00')
-    assert str(pattern) == 'str of datetime range=1970-01-01 00:00:00..1970-02-01 00:00:00 format=%Y-%m-%d %H:%M:%S'
+    assert str(pattern) == 'str of datetime range=1970-01-01 00:00:00..1970-02-01 00:00:00 pattern=%Y-%m-%d %H:%M:%S'
 
 
 def test_datetime_numrepr():

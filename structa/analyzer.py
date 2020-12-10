@@ -18,7 +18,7 @@ from .chars import (
     ident_first,
     ident_char,
 )
-from .patterns import (
+from .types import (
     Stats,
     Container,
     Bool,
@@ -178,31 +178,31 @@ class Analyzer:
                 # containing scalars, and Tuples are left alone as containers
                 # of distinct columns / fields
                 if (
-                    len(path.pattern) > 1 and
-                    isinstance(path.pattern[0].key, Field) and
-                    isinstance(path.pattern[0].pattern, Container) and
+                    len(path.content) > 1 and
+                    isinstance(path.content[0].key, Field) and
+                    isinstance(path.content[0].value, Container) and
                     all(
-                        item.pattern == path.pattern[0].pattern
-                        for item in path.pattern[1:]
+                        item.value == path.content[0].value
+                        for item in path.content[1:]
                     )
                 ):
                     keys = self._match(
-                        (item.key.value for item in path.pattern),
+                        (item.key.value for item in path.content),
                         (path,), threshold=0)
-                    return path.with_pattern([
+                    return path.with_content([
                         DictField(keys, sum(
-                            (p.pattern for p in path.pattern[1:]),
-                            path.pattern[0].pattern
+                            (p.value for p in path.content[1:]),
+                            path.content[0].value
                         ))
                     ])
-                return path.with_pattern([
-                    DictField(field.key, self._merge(field.pattern))
-                    for field in path.pattern
+                return path.with_content([
+                    DictField(field.key, self._merge(field.value))
+                    for field in path.content
                 ])
             else:
-                return path.with_pattern([
+                return path.with_content([
                     self._merge(item)
-                    for item in path.pattern
+                    for item in path.content
                 ])
         else:
             return path
@@ -225,7 +225,7 @@ class Analyzer:
             # item pattern
             item_pattern = self._analyze(
                 it, path + (pattern,), card=pattern.lengths.card)
-            return pattern.with_pattern([item_pattern])
+            return pattern.with_content([item_pattern])
         else:
             return pattern
 
@@ -239,14 +239,14 @@ class Analyzer:
             threshold=self.field_threshold,
             card=pattern.lengths.card)
         if isinstance(fields, Fields):
-            return pattern.with_pattern([
+            return pattern.with_content([
                 DictField(choice, self._analyze(
                     it, path + (pattern, choice),
                     card=pattern.lengths.card))
                 for choice in sorted(fields)
             ])
         else:
-            return pattern.with_pattern([
+            return pattern.with_content([
                 DictField(fields, self._analyze(
                     it, path + (pattern, fields),
                     card=pattern.lengths.card))
@@ -266,14 +266,14 @@ class Analyzer:
             threshold=self.field_threshold,
             card=pattern.lengths.card)
         if isinstance(fields, Fields):
-            return pattern.with_pattern([
+            return pattern.with_content([
                 TupleField(choice, self._analyze(
                     it, path + (pattern, choice),
                     card=pattern.lengths.card))
                 for choice in sorted(fields)
             ])
         else:
-            return pattern.with_pattern([
+            return pattern.with_content([
                 TupleField(fields, self._analyze(
                     it, path + (pattern, fields),
                     card=pattern.lengths.card))
@@ -316,8 +316,8 @@ class Analyzer:
                     yield from self._extract(it[head.value], tail)
                 except KeyError:
                     assert head.optional, "mandatory key missing"
-            elif isinstance(head, Tuple) and head.pattern is None:
-                # Incomplete tuple pattern indicates we're extracting tuples
+            elif isinstance(head, Tuple) and head.content is None:
+                # Incomplete tuple content indicates we're extracting tuples
                 # from the key(s) of the dict
                 for key in it:
                     yield from self._extract(key, [head] + tail)
@@ -573,11 +573,14 @@ class Analyzer:
             return DateTime.from_numbers(pattern)
         elif (
                 isinstance(pattern, StrRepr) and (
-                    (isinstance(pattern.inner, Int) and pattern.pattern == 'd') or
-                    isinstance(pattern.inner, Float)
+                    (
+                        isinstance(pattern.content, Int) and
+                        pattern.pattern == 'd'
+                    ) or
+                    isinstance(pattern.content, Float)
                 ) and
-                in_range(pattern.inner.values.min) and
-                in_range(pattern.inner.values.max)):
+                in_range(pattern.content.values.min) and
+                in_range(pattern.content.values.max)):
             return DateTime.from_numbers(pattern)
         else:
             return pattern

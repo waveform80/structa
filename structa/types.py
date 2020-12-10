@@ -78,7 +78,7 @@ class Stats:
             return count == 1
 
 
-class Pattern:
+class Type:
     __slots__ = ()
 
     def __repr__(self):
@@ -87,7 +87,7 @@ class Pattern:
     def __eq__(self, other):
         # NOTE: Eventually we expect compare to grow options for tweaking the
         # comparison; the __eq__ method will simply call compare with defaults
-        if isinstance(other, Pattern):
+        if isinstance(other, Type):
             return self.compare(other)
         return NotImplemented
 
@@ -97,13 +97,13 @@ class Pattern:
             isinstance(other, self.__class__))
 
 
-class Container(Pattern):
-    __slots__ = ('lengths', 'pattern')
+class Container(Type):
+    __slots__ = ('lengths', 'content')
 
-    def __init__(self, sample, pattern=None):
+    def __init__(self, sample, content=None):
         super().__init__()
         self.lengths = Stats.from_lengths(sample)
-        self.pattern = pattern
+        self.content = content
 
     def __repr__(self):
         return format_repr(self, lengths=None)
@@ -112,15 +112,15 @@ class Container(Pattern):
         if self == other:
             result = copy(self)
             result.lengths = self.lengths + other.lengths
-            result.pattern = [
-                a + b for a, b in zip(self.pattern, other.pattern)
+            result.content = [
+                a + b for a, b in zip(self.content, other.content)
             ]
             return result
         return NotImplemented
 
-    def with_pattern(self, pattern):
+    def with_content(self, content):
         result = copy(self)
-        result.pattern = pattern
+        result.content = content
         return result
 
     def compare(self, other):
@@ -128,17 +128,17 @@ class Container(Pattern):
         # actual structure itself
         return (
             super().compare(other) and
-            all(a.compare(b) for a, b in zip(self.pattern, other.pattern)))
+            all(a.compare(b) for a, b in zip(self.content, other.content)))
 
 
 class Dict(Container):
     __slots__ = ()
 
     def __str__(self):
-        if self.pattern is None:
+        if self.content is None:
             return '{}'
         else:
-            fields = [str(field) for field in self.pattern]
+            fields = [str(field) for field in self.content]
             result = ', '.join(fields)
             if '\n' in result or len(result) > 60:
                 result = ',\n'.join(fields)
@@ -153,38 +153,38 @@ class Dict(Container):
         return isinstance(value, dict)
 
 
-class DictField(Pattern):
-    __slots__ = ('key', 'pattern')
+class DictField(Type):
+    __slots__ = ('key', 'value')
 
-    def __init__(self, key, pattern=None):
+    def __init__(self, key, value=None):
         super().__init__()
         self.key = key
-        self.pattern = pattern
+        self.value = value
 
     def __str__(self):
-        return '{self.key}: {self.pattern}'.format(self=self)
+        return '{self.key}: {self.value}'.format(self=self)
 
     def __add__(self, other):
         return DictField(self.key + other.key,
-                         self.pattern + other.pattern)
+                         self.value + other.value)
 
     def compare(self, other):
         return (
             super().compare(other) and
             self.key.compare(other.key) and
-            self.pattern is not None and
-            other.pattern is not None and
-            self.pattern.compare(other.pattern))
+            self.value is not None and
+            other.value is not None and
+            self.value.compare(other.value))
 
 
 class Tuple(Container):
     __slots__ = ()
 
     def __str__(self):
-        if self.pattern is None:
+        if self.content is None:
             return '()'
         else:
-            fields = [str(field) for field in self.pattern]
+            fields = [str(field) for field in self.content]
             result = ', '.join(fields)
             if '\n' in result or len(result) > 60:
                 result = ',\n'.join(fields)
@@ -199,41 +199,41 @@ class Tuple(Container):
         return isinstance(value, tuple)
 
 
-class TupleField(Pattern):
-    __slots__ = ('index', 'pattern')
+class TupleField(Type):
+    __slots__ = ('index', 'value')
 
-    def __init__(self, index, pattern=None):
+    def __init__(self, index, value=None):
         super().__init__()
         self.index = index
-        self.pattern = pattern
+        self.value = value
 
     def __str__(self):
-        return str(self.pattern)
+        return str(self.value)
 
     def __repr__(self):
         return format_repr(self, index=None)
 
     def __add__(self, other):
         return TupleField(self.index + other.index,
-                          self.pattern + other.pattern)
+                          self.value + other.value)
 
     def compare(self, other):
         return (
             super().compare(other) and
             self.index.compare(other.index) and
-            self.pattern is not None and
-            other.pattern is not None and
-            self.pattern.compare(other.pattern))
+            self.value is not None and
+            other.value is not None and
+            self.value.compare(other.value))
 
 
 class List(Container):
     __slots__ = ()
 
     def __str__(self):
-        if self.pattern is None:
+        if self.content is None:
             return '[]'
         else:
-            elems = [str(item) for item in self.pattern]
+            elems = [str(item) for item in self.content]
             result = ', '.join(elems)
             if '\n' in result or len(result) > 60:
                 result = ',\n'.join(elems)
@@ -245,7 +245,7 @@ class List(Container):
         return isinstance(value, list)
 
 
-class Scalar(Pattern):
+class Scalar(Type):
     __slots__ = ('values', 'unique')
 
     def __init__(self, sample):
@@ -364,7 +364,7 @@ class DateTime(Scalar):
     @classmethod
     def from_numbers(cls, pattern):
         if isinstance(pattern, StrRepr):
-            num_pattern = pattern.inner
+            num_pattern = pattern.content
         else:
             num_pattern = pattern
         dt_counter = Counter()
@@ -372,7 +372,7 @@ class DateTime(Scalar):
             dt_counter[datetime.fromtimestamp(value)] = count
         result = NumRepr(cls(dt_counter), pattern=num_pattern.__class__)
         if isinstance(pattern, StrRepr):
-            return pattern.with_inner(result)
+            return pattern.with_content(result)
         else:
             return result
 
@@ -440,21 +440,21 @@ class Str(Scalar):
         return result
 
 
-class Repr(Pattern):
-    __slots__ = ('inner', 'pattern')
+class Repr(Type):
+    __slots__ = ('content', 'pattern')
 
-    def __init__(self, inner, pattern=None):
+    def __init__(self, content, pattern=None):
         super().__init__()
-        self.inner = inner
+        self.content = content
         self.pattern = pattern
 
-    def with_inner(self, inner):
-        return self.__class__(inner, self.pattern)
+    def with_content(self, content):
+        return self.__class__(content, self.pattern)
 
     def compare(self, other):
         # XXX Should we compare pattern here? Consider case of mistaken octal/
         # dec pattern when it's actually hex in the merge scenario?
-        return super().compare(other) and self.inner.compare(other.inner)
+        return super().compare(other) and self.content.compare(other.content)
 
 
 class StrRepr(Repr):
@@ -463,25 +463,28 @@ class StrRepr(Repr):
     int_bases = {'o': 8, 'd': 10, 'x': 16}
 
     def __str__(self):
-        return 'str of {self.inner} format={self.pattern}'.format(self=self)
+        return 'str of {self.content} pattern={self.pattern}'.format(self=self)
 
     def __add__(self, other):
         if self == other:
-            if isinstance(self.inner, other.inner.__class__):
+            if isinstance(self.content, other.content.__class__):
                 child, parent = self, other
             else:
                 child, parent = other, self
-            if child.inner.__class__ is Int and parent.inner.__class__ is Int:
+            if (
+                child.content.__class__ is Int and
+                parent.content.__class__ is Int
+            ):
                 pattern = sorted(child.pattern + parent.pattern,
                                  key=self.int_bases.get)[-1]
             else:
                 pattern = parent.pattern
-            return parent.__class__(child.inner + parent.inner, pattern)
+            return parent.__class__(child.content + parent.content, pattern)
         return NotImplemented
 
     def compare(self, other):
         if super().compare(other):
-            if isinstance(self.inner, other.inner.__class__):
+            if isinstance(self.content, other.content.__class__):
                 child, parent = self, other
             else:
                 child, parent = other, self
@@ -494,34 +497,36 @@ class StrRepr(Repr):
                 (Float,    Float):    lambda: True,
                 (DateTime, DateTime): lambda: child.pattern == parent.pattern,
                 (NumRepr,  NumRepr):  lambda: True,
-            }[child.inner.__class__, parent.inner.__class__]()
+            }[child.content.__class__, parent.content.__class__]()
         return False
 
     def validate(self, value):
         if not isinstance(value, str):
             return False
         try:
-            inner = self.inner
-            if isinstance(self.inner, Bool):
+            content = self.content
+            if isinstance(self.content, Bool):
                 false, true = self.pattern.split('|', 1)
                 value = parse_bool(value, false, true)
-            elif isinstance(self.inner, Int) or (
-                isinstance(self.inner, NumRepr) and self.inner.pattern is Int
+            elif isinstance(self.content, Int) or (
+                isinstance(self.content, NumRepr) and
+                self.content.pattern is Int
             ):
                 value = int(value, base=self.int_bases[self.pattern])
-            elif isinstance(self.inner, Float) or (
-                isinstance(self.inner, NumRepr) and self.inner.pattern is Float
+            elif isinstance(self.content, Float) or (
+                isinstance(self.content, NumRepr) and
+                self.content.pattern is Float
             ):
                 assert self.pattern == 'f'
                 value = float(value)
-            elif isinstance(self.inner, DateTime):
+            elif isinstance(self.content, DateTime):
                 value = datetime.strptime(value, self.pattern)
             else:
                 assert False
         except ValueError:
             return False
         else:
-            return self.inner.validate(value)
+            return self.content.validate(value)
 
 
 class NumRepr(Repr):
@@ -529,9 +534,9 @@ class NumRepr(Repr):
 
     def __str__(self):
         if self.pattern is Int:
-            template = 'int of {self.inner}'
+            template = 'int of {self.content}'
         elif self.pattern is Float:
-            template = 'float of {self.inner}'
+            template = 'float of {self.content}'
         else:
             assert False
         return template.format(self=self)
@@ -542,21 +547,21 @@ class NumRepr(Repr):
                 pattern = Float
             else:
                 pattern = Int
-            return NumRepr(self.inner + other.inner, pattern)
+            return NumRepr(self.content + other.content, pattern)
         return NotImplemented
 
     def validate(self, value):
         if not isinstance(value, Real):
             return False
         try:
-            if isinstance(self.inner, DateTime):
+            if isinstance(self.content, DateTime):
                 value = datetime.fromtimestamp(value)
             else:
                 assert False
         except ValueError:
             return False
         else:
-            return self.inner.validate(value)
+            return self.content.validate(value)
 
 
 class URL(Str):
@@ -573,7 +578,7 @@ class URL(Str):
         )
 
 
-class Fields(Pattern):
+class Fields(Type):
     __slots__ = ('values',)
 
     def __init__(self, values):
@@ -597,7 +602,7 @@ class Fields(Pattern):
 
 
 @total_ordering
-class Field(Pattern):
+class Field(Type):
     __slots__ = ('value', 'optional')
 
     def __init__(self, value, optional=False):
@@ -634,7 +639,7 @@ class Field(Pattern):
         return value == self.value
 
 
-class Value(Pattern):
+class Value(Type):
     __slots__ = ()
 
     def __new__(cls):
@@ -654,7 +659,7 @@ class Value(Pattern):
         return True
 
 
-class Empty(Pattern):
+class Empty(Type):
     __slots__ = ()
 
     def __new__(cls):
