@@ -15,15 +15,16 @@ except ImportError:
 
 class Source:
     def __init__(self, source, *, encoding='auto', encoding_strict=True,
-                 format='auto', csv_field_delim='auto', csv_quote_delim='auto',
+                 format='auto', csv_delimiter='auto', csv_quotechar='auto',
                  yaml_safe=True, sample_limit=1048576):
         self._source = source
         self._encoding = encoding
         self._encoding_strict = encoding_strict
         self._format = format
-        self._csv_field_delim = csv_field_delim
-        self._csv_quote_delim = csv_quote_delim
+        self._csv_delimiter = csv_delimiter
+        self._csv_quotechar = csv_quotechar
         self._csv_dialect = None
+        self._yaml_safe = yaml_safe
         self._sample_limit = sample_limit
         self._sample = b''
         self._data = None
@@ -43,7 +44,7 @@ class Source:
     @property
     def csv_dialect(self):
         if self.format == 'csv':
-            if self._csv_dialect is None and self._format == 'csv':
+            if self._csv_dialect is None:
                 self._detect_csv_dialect()
             return self._csv_dialect
         else:
@@ -113,13 +114,13 @@ class Source:
             if has_field_delims and quote_delims and not (
                 quote_delims % 2):
                 # Both field and quote delimiters found in the line and quote
-                # delimiters are paired. Also possible for YAML (hence elif)
-                # but the presence of paired quotes is a strong indicator of
-                # CSV
+                # delimiters are paired. Also possible for YAML (hence
+                # continue) but the presence of paired quotes is a strong
+                # indicator of CSV
                 csv_score += 2
-            elif ':' in line:
+            elif line.count(':') == 1:
                 # No quoted, field-delimited strings, but line contains
-                # a colon - weaker indicator of YAML
+                # a single colon - weaker indicator of YAML
                 yaml_score += 1
             elif has_field_delims:
                 # No quote delimiters, but field delimiters are present
@@ -133,7 +134,7 @@ class Source:
             self._format = 'unknown'
 
     def _detect_csv_dialect(self):
-        if self._csv_field_delim == 'auto' or self._csv_quote_delim == 'auto':
+        if self._csv_delimiter == 'auto' or self._csv_quotechar == 'auto':
             # First line is possible header; only need a few Kb for
             # analysis
             sample = self._sample_str()
@@ -141,12 +142,12 @@ class Source:
             self._csv_dialect = csv.Sniffer().sniff(
                 sample,
                 delimiters=",; \t"
-                           if self._csv_field_delim == 'auto' else
-                           self._csv_field_delim)
+                           if self._csv_delimiter == 'auto' else
+                           self._csv_delimiter)
         else:
             class dialect(csv.Dialect):
-                delimiter = self._csv_field_delim
-                quotechar = self._csv_quote_delim or None
+                delimiter = self._csv_delimiter
+                quotechar = self._csv_quotechar or None
                 escapechar = None
                 doublequote = True
                 lineterminator = '\r\n'
