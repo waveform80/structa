@@ -1,9 +1,5 @@
 import os
-import io
-import re
 import sys
-import csv
-import json
 import argparse
 import warnings
 from datetime import datetime, timedelta
@@ -11,29 +7,10 @@ from fractions import Fraction
 from threading import Thread
 from queue import Queue
 
-from chardet.universaldetector import UniversalDetector
-try:
-    from ruamel import yaml
-except ImportError:
-    yaml = None
-
 from ..analyzer import Analyzer, ValidationWarning
 from ..conversions import parse_duration_or_timestamp
+from ..source import Source
 from .progress import Progress
-
-
-class MyAnalyzer(Analyzer):
-    @classmethod
-    def from_config(cls, config):
-        return cls(
-            bad_threshold=config.bad_threshold,
-            empty_threshold=config.empty_threshold,
-            field_threshold=config.field_threshold,
-            max_numeric_len=config.max_numeric_len,
-            strip_whitespace=config.strip_whitespace,
-            min_timestamp=config.min_timestamp,
-            max_timestamp=config.max_timestamp,
-            track_progress=True)
 
 
 def main(args=None):
@@ -41,13 +18,21 @@ def main(args=None):
     try:
         config = get_config(args)
         with Progress() as progress:
+            source = MySource.from_config(config)
             analyzer = MyAnalyzer.from_config(config)
-            data = load_data(config, progress)
+            if config.encoding == 'auto':
+                progress.message('Guessed encoding {source.encoding}'.format(
+                    source=source))
+            if config.format == 'auto':
+                progress.message('Guessed format {source.format}'.format(
+                    source=source))
+            progress.message('Reading file {config.file.name}'.format(
+                config=config))
             queue = Queue()
             thread = Thread(
-                target=lambda analyzer, data, queue:
-                    queue.put(analyzer.analyze(data)),
-                args=(analyzer, data, queue),
+                target=lambda analyzer, source, queue:
+                    queue.put(analyzer.analyze(source.data)),
+                args=(analyzer, source, queue),
                 daemon=True)
             thread.start()
             progress.message('Analyzing structure')
@@ -152,147 +137,46 @@ def get_config(args):
         '"auto" which indicates the delimiters should be detected. Bear in '
         "mind that some characters may require quoting for the shell, e.g. "
         "';\"'")
-    if yaml:
-        parser.add_argument(
-            '--yaml-safe', action='store_true', default=True)
-        parser.add_argument(
-            '--no-yaml-safe', action='store_false', dest='yaml_safe',
-            help='Controls whether the "safe" or "unsafe" YAML loader is used '
-            'to parse YAML files. The default is the "safe" parser. Only use '
-            "--no-yaml-safe if you trust the source of your data")
+    parser.add_argument(
+        '--yaml-safe', action='store_true', default=True)
+    parser.add_argument(
+        '--no-yaml-safe', action='store_false', dest='yaml_safe',
+        help='Controls whether the "safe" or "unsafe" YAML loader is used '
+        'to parse YAML files. The default is the "safe" parser. Only use '
+        "--no-yaml-safe if you trust the source of your data")
 
     parser.set_defaults(sample=b'', csv_dialect=None)
     return parser.parse_args(args)
 
 
-def detect_encoding(config):
-    # XXX Split this into a separate AutoEncodedFile class? Could probably
-    # make the sampling a bit nicer (e.g. hide it behind a "seekable" file
-    # interface)
-    if config.encoding == 'auto':
-        detector = UniversalDetector()
-        while len(config.sample) < config.sample_bytes and not detector.done:
-            buf = config.file.read(4096)
-            if not buf:
-                break
-            config.sample += buf
-            detector.feed(buf)
-        result = detector.close()
-        if result['confidence'] < 0.9:
-            warnings.warn(ValidationWarning(
-                'Low confidence ({confidence}) in detected character set'.
-                format_map(result)))
-        config.encoding = result['encoding']
+class MyAnalyzer(Analyzer):
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            bad_threshold=config.bad_threshold,
+            empty_threshold=config.empty_threshold,
+            field_threshold=config.field_threshold,
+            max_numeric_len=config.max_numeric_len,
+            strip_whitespace=config.strip_whitespace,
+            min_timestamp=config.min_timestamp,
+            max_timestamp=config.max_timestamp,
+            track_progress=True)
 
 
-def detect_format(config):
-    if config.format == 'auto':
-        if len(config.sample) < config.sample_bytes:
-            config.sample += config.file.read(
-                config.sample_bytes - len(config.sample))
-        sample = config.sample.decode(config.encoding, errors='replace')
-        if config.sample[:5] == '<?xml':
-            config.format = 'xml'
-        else:
-            sample = sample.lstrip()
-            if sample[:1] in ('[', '{'):
-                config.format = 'json'
-            elif sample[:5] == '<?xml':
-                warnings.warn(ValidationWarning(
-                    'whitespace before xml header'))
-                config.format = 'xml'
-            elif sample[:1] == '<':
-                warnings.warn(ValidationWarning(
-                    'missing xml header'))
-                config.format = 'xml'
-            else:
-                # Strip potentially partial last line off
-                sample = sample.splitlines(keepends=True)[:-1]
-                quote_delims = re.compile('["\']')
-                field_delims = re.compile('[,; \\t]')
-                csv_score = yaml_score = 0
-                for line in sample:
-                    if (
-                        line.startswith(('#', ' ', '-')) or
-                        line.endswith(':')
-                    ):
-                        # YAML comments, indented lines, "-" prefixed items
-                        # and colon suffixes are all atypical in CSV and
-                        # strong indicators of YAML
-                        yaml_score += 2
-                        continue
-                    has_field_delims = bool(set(line) & set(',; \\t'))
-                    quote_delims = max(
-                        line.count(delim) for delim in ('"', "'"))
-                    if has_field_delims and quote_delims and not (
-                        quote_delims % 2):
-                        # Both field and quote delimiters found in the line and
-                        # quote delimiters are paired. Also possible for YAML
-                        # (hence elif) but the presence of paired quotes is a
-                        # strong indicator of CSV
-                        csv_score += 2
-                    elif ':' in line:
-                        # No quoted, field-delimited strings, but line contains
-                        # a colon - weaker indicator of YAML
-                        yaml_score += 1
-                    elif has_field_delims:
-                        # No quote delimiters, but field delimiters are present
-                        # with no colon in the line - weaker indicator of CSV
-                        csv_score += 1
-                if yaml_score > csv_score:
-                    config.format = 'yaml'
-                elif csv_score > 0:
-                    config.format = 'csv'
-                    if config.csv_format == 'auto':
-                        # First line is possible header; only need a few Kb for
-                        # analysis
-                        sample = ''.join(sample[1:])[:8192]
-                        config.csv_dialect = csv.Sniffer().sniff(
-                            sample, delimiters=",; \t")
-                    else:
-                        class dialect(csv.Dialect):
-                            delimiter = config.csv_format[:1]
-                            quotechar = (
-                                None if len(config.csv_format) == 1 else
-                                config.csv_format[1:])
-                            escapechar = None
-                            doublequote = True
-                            lineterminator = '\r\n'
-                            quoting = csv.QUOTE_MINIMAL
-                        config.csv_dialect = dialect
-                else:
-                    raise ValueError('unable to guess the file format')
-        # XXX Output CSV detected dialect?
-
-
-def load_data(config, progress):
-    detect_encoding(config)
-    progress.message('Guessed encoding {config.encoding}'.format(config=config))
-    detect_format(config)
-    progress.message('Guessed format {config.format}'.format(config=config))
-    progress.message('Reading file {config.file.name}'.format(config=config))
-    data = config.sample + config.file.read()
-    progress.message('Decoding file')
-    data = data.decode(
-        config.encoding,
-        errors='strict' if config.encoding_strict else 'replace')
-
-    progress.message('Parsing data')
-    if config.format == 'json':
-        return json.loads(data)
-    elif config.format == 'csv':
-        # Exclude the first row of data from analysis in case it's a header
-        reader = csv.reader(data.splitlines(keepends=True)[1:],
-                            config.csv_dialect)
-        return list(reader)
-    elif config.format == 'yaml':
-        if not yaml:
-            raise ImportError('ruamel.yaml package is not installed')
-        else:
-            loader = yaml.SafeLoader if config.yaml_safe else yaml.UnsafeLoader
-            return yaml.load(io.StringIO(data), Loader=loader)
-    elif config.format == 'xml':
-        raise NotImplementedError()
+class MySource(Source):
+    @classmethod
+    def from_config(cls, config):
+        return cls(
+            source=config.file,
+            encoding=config.encoding,
+            encoding_strict=config.encoding_strict,
+            format=config.format,
+            csv_field_delim='auto' if config.csv_format == 'auto' else
+                            config.csv_format[:1],
+            csv_quote_delim='auto' if config.csv_format == 'auto' else
+                            config.csv_format[1:],
+            yaml_safe=config.yaml_safe,
+            sample_limit=config.sample_bytes)
 
 
 _start = datetime.now()
