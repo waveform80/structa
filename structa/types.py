@@ -16,17 +16,19 @@ class Stats:
     numeric values (or lengths of strings or containers), along with the
     specified sample of values.
     """
-    __slots__ = ('sample', 'card', 'min', 'max', 'median')
+    __slots__ = ('sample', 'card', 'min', 'q1', 'q2', 'q3', 'max')
 
-    def __init__(self, sample, card, min, max, median):
+    def __init__(self, sample, card, min, q1, q2, q3, max):
         if not isinstance(sample, FrozenCounter):
             assert isinstance(sample, Counter)
             sample = FrozenCounter.from_counter(sample)
         self.sample = sample
         self.card = card
         self.min = min
+        self.q1 = q1
+        self.q2 = q2
+        self.q3 = q3
         self.max = max
-        self.median = median
 
     def __repr__(self):
         return format_repr(self, sample='...')
@@ -37,8 +39,10 @@ class Stats:
                 self.sample == other.sample and
                 self.card == other.card and
                 self.min == other.min and
-                self.max == other.max and
-                self.median == other.median)
+                self.q1 == other.q1 and
+                self.q2 == other.q2 and
+                self.q3 == other.q3 and
+                self.max == other.max)
         return NotImplemented
 
     def __add__(self, other):
@@ -46,18 +50,30 @@ class Stats:
             return Stats.from_sample(self.sample + other.sample)
         return NotImplemented
 
+    @property
+    def median(self):
+        return self.q2
+
     @classmethod
     def from_sample(cls, sample):
-        assert isinstance(sample, (Counter, FrozenCounter)), ('%s is not Counter' % sample)
+        assert isinstance(sample, (Counter, FrozenCounter)), \
+                '{sample} is not Counter'.format(sample=sample)
         assert sample
         keys = sorted(sample)
         card = sum(sample.values())
-        index = card // 2
-        for median in keys:
-            index -= sample[median]
-            if index < 0:
-                break
-        return cls(sample, card, keys[0], keys[-1], median)
+        indexes = (0, card // 4, card // 2, 3 * card // 4)
+        summary = []
+        index = 0
+        for key in keys:
+            while index >= indexes[len(summary)]:
+                summary.append(key)
+                if len(summary) == len(indexes):
+                    summary.append(keys[-1])
+                    return cls(sample, card, *summary)
+            index += sample[key]
+        # If we reach here, the remaining quartiles are all max
+        summary.extend([keys[-1]] * (5 - len(summary)))
+        return cls(sample, card, *summary)
 
     @classmethod
     def from_lengths(cls, values):

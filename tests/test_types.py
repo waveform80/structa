@@ -9,17 +9,17 @@ from structa.types import *
 
 def test_stats():
     s = Stats.from_sample(Counter(range(10)))
-    assert s == Stats(Counter(range(10)), 10, 0, 9, 5)
+    assert s == Stats(Counter(range(10)), 10, 0, 2, 5, 7, 9)
     assert s != []
-    assert repr(s) == 'Stats(sample=..., card=10, min=0, max=9, median=5)'
+    assert repr(s) == 'Stats(sample=..., card=10, min=0, q1=2, q2=5, q3=7, max=9)'
     assert Stats.from_sample(Counter(range(1000))) == Stats(
-        Counter(range(1000)), 1000, 0, 999, 500)
+        Counter(range(1000)), 1000, 0, 250, 500, 750, 999)
     with pytest.raises(AssertionError):
         Stats.from_sample([])
     c = Stats.from_lengths([[], [1], [1, 2, 3]])
-    assert c == Stats(Counter((0, 1, 3)), 3, 0, 3, 1)
+    assert c == Stats(Counter((0, 1, 3)), 3, 0, 0, 1, 3, 3)
     assert c != []
-    assert repr(c) == 'Stats(sample=..., card=3, min=0, max=3, median=1)'
+    assert repr(c) == 'Stats(sample=..., card=3, min=0, q1=0, q2=1, q3=3, max=3)'
 
 
 def test_stats_merge():
