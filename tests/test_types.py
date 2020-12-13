@@ -11,7 +11,7 @@ def test_stats():
     s = Stats.from_sample(Counter(range(10)))
     assert s == Stats(Counter(range(10)), 10, 0, 2, 5, 7, 9)
     assert s != []
-    assert repr(s) == 'Stats(sample=..., card=10, min=0, q1=2, q2=5, q3=7, max=9)'
+    assert repr(s) == 'Stats(sample=..., card=10, min=0, q1=2, q2=5, q3=7, max=9, unique=True)'
     assert Stats.from_sample(Counter(range(1000))) == Stats(
         Counter(range(1000)), 1000, 0, 250, 500, 750, 999)
     with pytest.raises(AssertionError):
@@ -19,7 +19,7 @@ def test_stats():
     c = Stats.from_lengths([[], [1], [1, 2, 3]])
     assert c == Stats(Counter((0, 1, 3)), 3, 0, 0, 1, 3, 3)
     assert c != []
-    assert repr(c) == 'Stats(sample=..., card=3, min=0, q1=0, q2=1, q3=3, max=3)'
+    assert repr(c) == 'Stats(sample=..., card=3, min=0, q1=0, q2=1, q3=3, max=3, unique=True)'
 
 
 def test_stats_merge():
@@ -66,8 +66,8 @@ def test_dict_with_pattern():
     assert pattern.lengths.max == 2
     assert str(pattern) == '{str pattern=.: int range=1..2}'
     assert repr(pattern) == (
-        'Dict(content=[DictField(key=Str(pattern=[AnyChar()], values=..., '
-        'unique=False), value=Int(values=..., unique=False))])')
+        'Dict(content=[DictField(key=Str(pattern=[AnyChar()], values=...), '
+        'value=Int(values=...))])')
 
 
 def test_dict_with_long_pattern():
@@ -96,12 +96,9 @@ def test_dict_with_long_pattern():
 }"""
     assert repr(pattern) == (
         "Dict(content=["
-        "DictField(key=Field(value='active', optional=True), "
-        "value=StrRepr(content=Bool(values=..., unique=True), pattern='f|t')), "
-        "DictField(key=Field(value='label', optional=False), "
-        "value=Str(pattern=None, values=..., unique=True)), "
-        "DictField(key=Field(value='num', optional=False), "
-        "value=Int(values=..., unique=True))])")
+        "DictField(key=Field(value='active', optional=True), value=StrRepr(content=Bool(values=...), pattern='f|t')), "
+        "DictField(key=Field(value='label', optional=False), value=Str(pattern=None, values=...)), "
+        "DictField(key=Field(value='num', optional=False), value=Int(values=...))])")
     assert pattern + pattern == pattern
     with pytest.raises(TypeError):
         pattern + 100
@@ -140,8 +137,8 @@ def test_tuple_with_pattern():
     assert str(pattern) == '(str pattern=..., int range=1..3)'
     assert repr(pattern) == (
         "Tuple(content=["
-        "TupleField(value=Str(pattern=[AnyChar(), AnyChar(), AnyChar()], values=..., unique=True)), "
-        "TupleField(value=Int(values=..., unique=True))])")
+        "TupleField(value=Str(pattern=[AnyChar(), AnyChar(), AnyChar()], values=...)), "
+        "TupleField(value=Int(values=...))])")
 
 
 def test_tuple_with_long_pattern():
@@ -178,9 +175,9 @@ def test_tuple_with_long_pattern():
         "List(content=[Tuple(content=["
         "TupleField(value=Str(pattern=[" +
         ', '.join('CharClass({!r})'.format(c) for c in 'J. R. R. Tolkien') +
-        "], values=..., unique=False)), "
-        "TupleField(value=Str(pattern=None, values=..., unique=True)), "
-        "TupleField(value=StrRepr(content=DateTime(values=..., unique=True), "
+        "], values=...)), "
+        "TupleField(value=Str(pattern=None, values=...)), "
+        "TupleField(value=StrRepr(content=DateTime(values=...), "
         "pattern='%Y-%m-%d'))"
         "])])"
     )
@@ -252,7 +249,7 @@ def test_str():
     assert pattern.lengths.min == 3
     assert pattern.lengths.max == 4
     assert pattern.pattern is None
-    assert pattern.unique
+    assert pattern.values.unique
     assert str(pattern) == 'str'
     assert pattern.validate('blah')
     assert not pattern.validate('')
@@ -267,7 +264,7 @@ def test_fixed_str():
         CharClass('0'), CharClass('x'), CharClass('0'), CharClass('0'),
         hex_digit, hex_digit])
     assert pattern.lengths.min == pattern.lengths.max == 6
-    assert pattern.unique
+    assert pattern.values.unique
     assert str(pattern) == 'str pattern=0x00[0-9A-Fa-f][0-9A-Fa-f]'
     assert pattern.validate('0x0012')
     assert not pattern.validate('0xff')

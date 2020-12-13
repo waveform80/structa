@@ -8,6 +8,10 @@ from collections.abc import Mapping
 from .collections import Counter, FrozenCounter
 from .conversions import try_conversion, parse_bool
 from .format import format_int, format_repr
+from .xml import ElementFactory, xml
+
+
+tag = ElementFactory()
 
 
 class Stats:
@@ -16,7 +20,7 @@ class Stats:
     numeric values (or lengths of strings or containers), along with the
     specified sample of values.
     """
-    __slots__ = ('sample', 'card', 'min', 'q1', 'q2', 'q3', 'max')
+    __slots__ = ('sample', 'card', 'min', 'q1', 'q2', 'q3', 'max', 'unique')
 
     def __init__(self, sample, card, min, q1, q2, q3, max):
         if not isinstance(sample, FrozenCounter):
@@ -29,9 +33,43 @@ class Stats:
         self.q2 = q2
         self.q3 = q3
         self.max = max
+        for value, count in self.sample.most_common():
+            self.unique = count == 1
+            break
 
     def __repr__(self):
         return format_repr(self, sample='...')
+
+    def __xml__(self):
+        content = [
+            tag.summary(
+                tag.min(self.min),
+                tag.q1(self.q1),
+                tag.q2(self.q2),
+                tag.q3(self.q3),
+                tag.max(self.max),
+            )
+        ]
+        if not self.unique:
+            if len(self.sample) > 20:
+                common = self.sample.most_common()
+                content.append(
+                    tag.sample(
+                        [tag.value(value, count=count)
+                         for value, count in common[:10]],
+                        tag.more(),
+                        [tag.value(value, count=count)
+                         for value, count in common[-10:]],
+                    )
+                )
+            else:
+                content.append(
+                    tag.sample(
+                        tag.value(value, count=count)
+                        for value, count in self.sample.most_common()
+                    )
+                )
+        return tag.stats(content, unique=self.unique)
 
     def __eq__(self, other):
         if isinstance(other, Stats):
@@ -49,10 +87,6 @@ class Stats:
         if isinstance(other, Stats):
             return Stats.from_sample(self.sample + other.sample)
         return NotImplemented
-
-    @property
-    def median(self):
-        return self.q2
 
     @classmethod
     def from_sample(cls, sample):
@@ -86,12 +120,8 @@ class Stats:
         return cls.from_sample(lengths)
 
     @property
-    def unique(self):
-        """
-        True if the maximum cardinality in the :attr:`sample` is 1.
-        """
-        for value, count in self.sample.most_common():
-            return count == 1
+    def median(self):
+        return self.q2
 
 
 class Type:
@@ -99,6 +129,9 @@ class Type:
 
     def __repr__(self):
         return format_repr(self)
+
+    def __xml__(self):
+        return tag.type()
 
     def __eq__(self, other):
         # NOTE: Eventually we expect compare to grow options for tweaking the
@@ -123,6 +156,12 @@ class Container(Type):
 
     def __repr__(self):
         return format_repr(self, lengths=None)
+
+    def __xml__(self):
+        return tag.container(
+            (xml(field) for field in self.content),
+            tag.lengths(iter(xml(self.lengths))),
+        )
 
     def __add__(self, other):
         if self == other:
@@ -162,6 +201,9 @@ class Dict(Container):
             else:
                 return '{{{result}}}'.format(result=result)
 
+    def __xml__(self):
+        return tag.dict(iter(super().__xml__()))
+
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
         # TypeError or ValueError accordingly (bad type or just wrong range)
@@ -179,6 +221,9 @@ class DictField(Type):
 
     def __str__(self):
         return '{self.key}: {self.value}'.format(self=self)
+
+    def __xml__(self):
+        return tag.field(xml(self.key), xml(self.value))
 
     def __add__(self, other):
         return DictField(self.key + other.key,
@@ -208,6 +253,9 @@ class Tuple(Container):
             else:
                 return '({result})'.format(result=result)
 
+    def __xml__(self):
+        return tag.tuple(iter(super().__xml__()))
+
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
         # TypeError or ValueError accordingly (bad type or just wrong range)
@@ -225,6 +273,9 @@ class TupleField(Type):
 
     def __str__(self):
         return str(self.value)
+
+    def __xml__(self):
+        return xml(self.value)
 
     def __repr__(self):
         return format_repr(self, index=None)
@@ -257,17 +308,22 @@ class List(Container):
             else:
                 return '[{result}]'.format(result=result)
 
+    def __xml__(self):
+        return tag.list(iter(super().__xml__()))
+
     def validate(self, value):
         return isinstance(value, list)
 
 
 class Scalar(Type):
-    __slots__ = ('values', 'unique')
+    __slots__ = ('values',)
 
     def __init__(self, sample):
         super().__init__()
         self.values = Stats.from_sample(sample)
-        self.unique = self.values.unique
+
+    def __xml__(self):
+        return tag.scalar(tag.values(xml(self.values)))
 
     def __add__(self, other):
         if self == other:
@@ -276,7 +332,6 @@ class Scalar(Type):
             else:
                 result = copy(self)
             result.values = self.values + other.values
-            result.unique = result.values.unique
             return result
         return NotImplemented
 
@@ -296,6 +351,9 @@ class Float(Scalar):
     def __str__(self):
         return 'float range={min:.1f}..{max:.1f}'.format(
             min=self.values.min, max=self.values.max)
+
+    def __xml__(self):
+        return tag.float(iter(super().__xml__()))
 
     def validate(self, value):
         return (
@@ -329,6 +387,9 @@ class Int(Float):
             max=format_int(self.values.max)
         )
 
+    def __xml__(self):
+        return tag.int(iter(super().__xml__()))
+
     def validate(self, value):
         return (
             isinstance(value, int) and
@@ -355,6 +416,9 @@ class Bool(Int):
 
     def __str__(self):
         return 'bool'
+
+    def __xml__(self):
+        return tag.bool(iter(super().__xml__()))
 
     def validate(self, value):
         return (
@@ -397,6 +461,9 @@ class DateTime(Scalar):
             min=self.values.min.replace(microsecond=0),
             max=self.values.max.replace(microsecond=0))
 
+    def __xml__(self):
+        return tag.datetime(iter(super().__xml__()))
+
     def validate(self, value):
         return (
             isinstance(value, datetime) and
@@ -423,6 +490,14 @@ class Str(Scalar):
             return 'str pattern={pattern}'.format(
                 pattern=shorten(pattern, width=60, placeholder='...'))
 
+    def __xml__(self):
+        return tag.str(
+            iter(super().__xml__()),
+            tag.lengths(xml(self.lengths)),
+            pattern=None if self.pattern is None else
+                    ''.join(str(c) for c in self.pattern)
+        )
+
     def __add__(self, other):
         if self == other:
             if (
@@ -438,7 +513,6 @@ class Str(Scalar):
                 ]
             result = copy(self)
             result.values = self.values + other.values
-            result.unique = result.values.unique
             result.lengths = self.lengths + other.lengths
             result.pattern = new_pattern
             return result
@@ -480,6 +554,9 @@ class StrRepr(Repr):
 
     def __str__(self):
         return 'str of {self.content} pattern={self.pattern}'.format(self=self)
+
+    def __xml__(self):
+        return tag.strof(xml(self.content), pattern=self.pattern)
 
     def __add__(self, other):
         if self == other:
@@ -556,6 +633,14 @@ class NumRepr(Repr):
         else:
             assert False
         return template.format(self=self)
+
+    def __xml__(self):
+        if self.pattern is Int:
+            return tag.intof(xml(self.content))
+        elif self.pattern is Float:
+            return tag.floatof(xml(self.content))
+        else:
+            assert False
 
     def __add__(self, other):
         if self == other:
