@@ -48,6 +48,7 @@ class Stats:
                 tag.q2(self.q2),
                 tag.q3(self.q3),
                 tag.max(self.max),
+                unique=self.unique
             )
         ]
         if not self.unique:
@@ -69,7 +70,7 @@ class Stats:
                         for value, count in self.sample.most_common()
                     )
                 )
-        return tag.stats(content, unique=self.unique)
+        return tag.stats(content)
 
     def __eq__(self, other):
         if isinstance(other, Stats):
@@ -159,7 +160,7 @@ class Container(Type):
 
     def __xml__(self):
         return tag.container(
-            (xml(field) for field in self.content),
+            tag.content(xml(field) for field in self.content),
             tag.lengths(iter(xml(self.lengths))),
         )
 
@@ -323,7 +324,7 @@ class Scalar(Type):
         self.values = Stats.from_sample(sample)
 
     def __xml__(self):
-        return tag.scalar(tag.values(xml(self.values)))
+        return tag.scalar(tag.values(iter(xml(self.values))))
 
     def __add__(self, other):
         if self == other:
@@ -493,7 +494,7 @@ class Str(Scalar):
     def __xml__(self):
         return tag.str(
             iter(super().__xml__()),
-            tag.lengths(xml(self.lengths)),
+            tag.lengths(iter(xml(self.lengths))),
             pattern=None if self.pattern is None else
                     ''.join(str(c) for c in self.pattern)
         )
@@ -556,7 +557,7 @@ class StrRepr(Repr):
         return 'str of {self.content} pattern={self.pattern}'.format(self=self)
 
     def __xml__(self):
-        return tag.strof(xml(self.content), pattern=self.pattern)
+        return tag.strof(xml(self.content), pattern=repr(self.pattern))
 
     def __add__(self, other):
         if self == other:
@@ -671,6 +672,13 @@ class URL(Str):
     def __str__(self):
         return 'URL'
 
+    def __xml__(self):
+        return tag.url(
+            iter(super().__xml__()),
+            pattern=None if self.pattern is None else
+                    ''.join(str(c) for c in self.pattern)
+        )
+
     def validate(self, value):
         # TODO use urlparse (or split?) and check lots more schemes
         return (
@@ -714,6 +722,9 @@ class Field(Type):
     def __str__(self):
         return repr(self.value) + ('*' if self.optional else '')
 
+    def __xml__(self):
+        return tag.key(repr(self.value), optional=self.optional)
+
     def __add__(self, other):
         if self == other:
             return Field(self.value, self.optional or other.optional)
@@ -756,6 +767,9 @@ class Value(Type):
     def __str__(self):
         return 'value'
 
+    def __xml__(self):
+        return tag.value()
+
     def validate(self, value):
         return True
 
@@ -775,6 +789,9 @@ class Empty(Type):
 
     def __str__(self):
         return ''
+
+    def __xml__(self):
+        return tag.empty()
 
     def validate(self, value):
         return False

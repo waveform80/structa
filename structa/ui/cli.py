@@ -7,9 +7,12 @@ from fractions import Fraction
 from threading import Thread
 from queue import Queue
 
+from blessings import Terminal
+
 from ..analyzer import Analyzer, ValidationWarning
 from ..conversions import parse_duration_or_timestamp
 from ..source import Source
+from ..xml import xml, get_transform
 from .progress import Progress
 
 
@@ -17,33 +20,8 @@ def main(args=None):
     warnings.simplefilter('ignore', category=ValidationWarning)
     try:
         config = get_config(args)
-        with Progress() as progress:
-            source = MySource.from_config(config)
-            analyzer = MyAnalyzer.from_config(config)
-            if config.encoding == 'auto':
-                progress.message('Guessed encoding {source.encoding}'.format(
-                    source=source))
-            if config.format == 'auto':
-                progress.message('Guessed format {source.format}'.format(
-                    source=source))
-            progress.message('Reading file {config.file.name}'.format(
-                config=config))
-            data = source.data
-            queue = Queue()
-            thread = Thread(
-                target=lambda analyzer, data, queue:
-                    queue.put(analyzer.analyze(data)),
-                args=(analyzer, data, queue),
-                daemon=True)
-            thread.start()
-            progress.message('Analyzing structure')
-            while True:
-                if analyzer.progress is not None:
-                    progress.position = analyzer.progress
-                thread.join(0.25)
-                if not thread.is_alive():
-                    break
-        print(queue.get(timeout=1, block=True))
+        structure = get_structure(config)
+        print_structure(config, structure)
     except Exception as e:
         debug = int(os.environ.get('DEBUG', '0'))
         if not debug:
@@ -148,6 +126,65 @@ def get_config(args):
 
     parser.set_defaults(sample=b'', csv_dialect=None)
     return parser.parse_args(args)
+
+
+def get_structure(config):
+    with Progress() as progress:
+        source = MySource.from_config(config)
+        analyzer = MyAnalyzer.from_config(config)
+        if config.encoding == 'auto':
+            progress.message('Guessed encoding {source.encoding}'.format(
+                source=source))
+        if config.format == 'auto':
+            progress.message('Guessed format {source.format}'.format(
+                source=source))
+        progress.message('Reading file {config.file.name}'.format(
+            config=config))
+        data = source.data
+        queue = Queue()
+        thread = Thread(
+            target=lambda analyzer, data, queue:
+                queue.put(analyzer.analyze(data)),
+            args=(analyzer, data, queue),
+            daemon=True)
+        thread.start()
+        progress.message('Analyzing structure')
+        while True:
+            if analyzer.progress is not None:
+                progress.position = analyzer.progress
+            thread.join(0.25)
+            if not thread.is_alive():
+                break
+    return queue.get(timeout=1, block=True)
+
+
+def print_structure(config, structure):
+    term = Terminal()
+    styles = {
+        'normal-style': term.normal,
+        'unique-style': term.on_blue,
+        'key-style':    '',
+        'type-style':   term.cyan,
+        'stats-style':  term.white,
+        'req-style':    term.bold,
+        'opt-style':    '',
+    }
+    # XML 1.0 doesn't permit controls characters (other than whitespace) so
+    # we'll use some chars from the private-use region (E000-) for the XSLT
+    # params, then replace them after the transform in the vague hope no-one
+    # else is going to use them in data that could be included in stats :). XML
+    # 1.1 fixes this ... but nothing supports it.
+    transform = get_transform('cli.xsl')
+    xsl_chars = {style: chr(0xE000 + i) for i, style in enumerate(styles)}
+    output = str(transform(xml(structure), **{
+        style: transform.strparam(char)
+        for style, char in xsl_chars.items()
+    }))
+    output = output.translate(str.maketrans({
+        xsl_chars[style]: styles[style]
+        for style in styles
+    }))
+    print(output)
 
 
 class MyAnalyzer(Analyzer):

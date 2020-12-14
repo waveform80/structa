@@ -49,8 +49,7 @@ def test_main(tmpdir, capsys):
     with open(filename, 'w') as f:
         json.dump(data, f)
     assert cli.main([filename]) == 0
-    assert capsys.readouterr().out.strip() == str(List(
-        sample=[data], content=[Int(Counter(data))]))
+    assert capsys.readouterr().out.strip() == '[ int range=0..99 ]'
 
 
 def test_debug(tmpdir, capsys):

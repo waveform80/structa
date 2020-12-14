@@ -1,4 +1,7 @@
-import xml.etree.ElementTree as ET
+import lxml.etree as et
+from pkg_resources import resource_stream
+
+from . import ui
 
 
 def xml(obj):
@@ -8,6 +11,14 @@ def xml(obj):
     :class:`~xml.etree.ElementTree.Element` instance representing the object.
     """
     return obj.__xml__()
+
+
+def get_transform(name):
+    """
+    Return the XSLT transform defined by *name* in the :mod:`structa.ui`
+    module.
+    """
+    return et.XSLT(et.parse(resource_stream(ui.__name__, name)))
 
 
 class ElementFactory:
@@ -81,7 +92,7 @@ class ElementFactory:
                         last.tail = contents
                     else:
                         last.tail += contents
-        elif ET.iselement(contents):
+        elif et.iselement(contents):
             contents.tail = ''
             node.append(contents)
         else:
@@ -102,7 +113,7 @@ class ElementFactory:
                 '{{{self._namespace}}}{key}'.format(self=self, key=key): value
                 for (key, value) in attrs.items()
             }
-        e = ET.Element(_name, {
+        e = et.Element(_name, {
             key.rstrip('_') if isinstance(key, str) else
             str(key):
             key if value is True else
