@@ -11,7 +11,20 @@ from .format import format_int, format_repr
 from .xml import ElementFactory, xml
 
 
-tag = ElementFactory()
+class MyElementFactory(ElementFactory):
+    def _format(self, value):
+        if isinstance(value, datetime):
+            return '{0:%Y-%m-%d %H:%M:%S}'.format(value)
+        elif isinstance(value, float):
+            return '{0:.7g}'.format(value)
+        elif isinstance(value, int):
+            return format_int(value)
+        elif isinstance(value, bool):
+            return ('false', 'true')[value]
+        else:
+            return super()._format(value)
+
+tag = MyElementFactory()
 
 
 class Stats:
@@ -350,7 +363,7 @@ class Float(Scalar):
             pattern=pattern)
 
     def __str__(self):
-        return 'float range={min:.1f}..{max:.1f}'.format(
+        return 'float range={min:.7g}..{max:.7g}'.format(
             min=self.values.min, max=self.values.max)
 
     def __xml__(self):
