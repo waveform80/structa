@@ -5,13 +5,16 @@
 <strip-space elements="*" />
 
 <param name="normal-style" select="''" />
-<param name="unique-style" select="$normal-style" />
+<param name="unique-style" select="'*'" />
 <param name="key-style" select="$normal-style" />
 <param name="type-style" select="$normal-style" />
 <param name="stats-style" select="$normal-style" />
 <param name="pattern-style" select="$stats-style" />
-<param name="req-style" select="$normal-style" />
-<param name="opt-style" select="$normal-style" />
+<param name="chars-style" select="'\'" />
+<param name="req-style" select="''" />
+<param name="opt-style" select="'?'" />
+<param name="ellipsis" select="'..'" />
+<param name="truncation" select="$ellipsis" />
 
 <param name="show-pattern" select="1" />
 <param name="show-range" select="1" />
@@ -34,7 +37,7 @@
     <text>&#xA;</text><value-of select="substring($spaces, 1, $level * 4)" />
 </template>
 
-<template match="dict[content//dict|content//list|content//tuple]|dict[count(content/*) &gt; 2]">
+<template match="dict[content//dict|content//list|content//tuple]|dict[count(content/*) &gt; 1]">
     <value-of select="$normal-style" />
     <text>{</text>
     <for-each select="content/*">
@@ -47,7 +50,7 @@
     <text>}</text>
 </template>
 
-<template match="list[content//dict|content//list|content//tuple]|list[count(content/*) &gt; 2]">
+<template match="list[content//dict|content//list|content//tuple]|list[count(content/*) &gt; 1]">
     <value-of select="$normal-style" />
     <text>[</text>
     <for-each select="content/*">
@@ -60,7 +63,7 @@
     <text>]</text>
 </template>
 
-<template match="tuple[content//dict|content//list|content//tuple]|tuple[count(content/*) &gt; 2]">
+<template match="tuple[content//dict|content//list|content//tuple]|tuple[count(content/*) &gt; 1]">
     <value-of select="$normal-style" />
     <text>(</text>
     <for-each select="content/*">
@@ -123,7 +126,14 @@
     <if test="$show-pattern and @pattern">
         <value-of select="$stats-style" />
         <text> pattern=</text>
-        <value-of select="concat(substring(@pattern, 1, 60), '…')" />
+        <choose>
+            <when test="string-length(@pattern) &gt; 60">
+                <value-of select="concat(substring(@pattern, 1, 60), $truncation)" />
+            </when>
+            <otherwise>
+                <value-of select="@pattern" />
+            </otherwise>
+        </choose>
     </if>
 </template>
 
@@ -141,7 +151,7 @@
         <value-of select="$stats-style" />
         <text> range=</text>
         <value-of select="values/summary/min" />
-        <text>..</text>
+        <value-of select="$ellipsis" />
         <value-of select="values/summary/max" />
     </if>
 </template>
@@ -154,7 +164,7 @@
         <value-of select="$stats-style" />
         <text> range=</text>
         <value-of select="values/summary/min" />
-        <text>..</text>
+        <value-of select="$ellipsis" />
         <value-of select="values/summary/max" />
     </if>
 </template>
@@ -169,6 +179,13 @@
     <call-template name="unique" />
     <value-of select="$type-style" />
     <text>timestamp</text>
+    <if test="$show-range">
+        <value-of select="$stats-style" />
+        <text> range=</text>
+        <value-of select="values/summary/min" />
+        <value-of select="$ellipsis" />
+        <value-of select="values/summary/max" />
+    </if>
 </template>
 
 <template match="value">
@@ -187,7 +204,14 @@
     <if test="$show-pattern">
         <value-of select="$stats-style" />
         <text> pattern=</text>
-        <value-of select="concat(substring(@pattern, 1, 60), '…')" />
+        <choose>
+            <when test="string-length(@pattern) &gt; 60">
+                <value-of select="concat(substring(@pattern, 1, 60), $truncation)" />
+            </when>
+            <otherwise>
+                <value-of select="@pattern" />
+            </otherwise>
+        </choose>
     </if>
 </template>
 

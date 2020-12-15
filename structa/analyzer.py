@@ -282,7 +282,7 @@ class Analyzer:
     def _extract(self, it, path):
         """
         Extract all entries from *it* (a potentially nested iterable which is
-        the top-level object passed to :func:`analyze`), at the level dictated
+        the top-level object passed to :meth:`analyze`), at the level dictated
         by *path*, a sequence of pattern-matching objects.
         """
         if not path:

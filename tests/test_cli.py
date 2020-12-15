@@ -42,14 +42,13 @@ def test_num():
     assert isinstance(cli.num('1e0'), float)
 
 
-
 def test_main(tmpdir, capsys):
     data = list(range(100))
     filename = str(tmpdir.join('foo.json'))
     with open(filename, 'w') as f:
         json.dump(data, f)
     assert cli.main([filename]) == 0
-    assert capsys.readouterr().out.strip() == '[ int range=0..99 ]'
+    assert capsys.readouterr().out.strip() == '[ *int range=0..99 ]'
 
 
 def test_debug(tmpdir, capsys):

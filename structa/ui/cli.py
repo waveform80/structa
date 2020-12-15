@@ -161,13 +161,17 @@ def get_structure(config):
 def print_structure(config, structure):
     term = Terminal()
     styles = {
-        'normal-style': term.normal,
-        'unique-style': term.on_blue,
-        'key-style':    '',
-        'type-style':   term.cyan,
-        'stats-style':  term.white,
-        'req-style':    term.bold,
-        'opt-style':    '',
+        'normal-style':   term.normal,
+        'unique-style':   term.red('*'),
+        'key-style':      '',
+        'type-style':     term.cyan,
+        'stats-style':    term.normal,
+        'pattern-style':  term.normal,
+        'chars-style':    term.blue,
+        'req-style':      '',
+        'opt-style':      term.red('?'),
+        'ellipsis':       term.green('..'),
+        'truncation':     term.green('$'),
     }
     # XML 1.0 doesn't permit controls characters (other than whitespace) so
     # we'll use some chars from the private-use region (E000-) for the XSLT

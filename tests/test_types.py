@@ -265,7 +265,7 @@ def test_fixed_str():
         hex_digit, hex_digit])
     assert pattern.lengths.min == pattern.lengths.max == 6
     assert pattern.values.unique
-    assert str(pattern) == 'str pattern=0x00[0-9A-Fa-f][0-9A-Fa-f]'
+    assert str(pattern) == 'str pattern=0x00xx'
     assert pattern.validate('0x0012')
     assert not pattern.validate('0xff')
     assert not pattern.validate('foobar')
@@ -315,7 +315,7 @@ def test_float():
     assert pattern.validate('1.0')
     assert not pattern.validate(1.0)
     assert not pattern.validate('2000.0')
-    assert str(pattern) == 'str of float range=0.0..1000.0 pattern=f'
+    assert str(pattern) == 'str of float range=0..1000 pattern=f'
     assert pattern + pattern == pattern
     with pytest.raises(TypeError):
         pattern + 100
