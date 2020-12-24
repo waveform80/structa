@@ -76,6 +76,15 @@ def format_int(i):
 
 
 def format_repr(self, **override):
+    """
+    Returns a :func:`repr` style string for *self* in the form
+    ``class(name=value, name=value, ...)``.
+
+    .. note::
+
+        At present, this function does *not* handle recursive structures
+        unlike :func:`reprlib.recursive_repr`.
+    """
     args = (
         arg
         for cls in self.__class__.mro() if cls is not object
