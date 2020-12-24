@@ -1,7 +1,6 @@
 import warnings
 from math import ceil
 from datetime import datetime, timedelta
-from functools import partial
 from fractions import Fraction
 from collections import Counter, namedtuple
 from itertools import groupby
@@ -549,20 +548,15 @@ class Analyzer:
         numbers (or timestamps).
         """
         representations = (
-            (partial(
-                Bool.from_strings, bad_threshold=bad_threshold), BOOL_PATTERNS),
-            (partial(
-                Int.from_strings, bad_threshold=bad_threshold), INT_PATTERNS),
-            (partial(
-                Float.from_strings, bad_threshold=bad_threshold), ('f',)),
-            (partial(
-                DateTime.from_strings,
-                bad_threshold=bad_threshold), VAR_DATETIME_PATTERNS),
+            (Bool.from_strings,     BOOL_PATTERNS),
+            (Int.from_strings,      INT_PATTERNS),
+            (Float.from_strings,    ('f',)),
+            (DateTime.from_strings, VAR_DATETIME_PATTERNS),
         )
         for conversion, formats in representations:
             for fmt in formats:
                 try:
-                    return conversion(items, fmt)
+                    return conversion(items, fmt, bad_threshold=bad_threshold)
                 except ValueError:
                     pass
         return None
