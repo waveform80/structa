@@ -18,7 +18,6 @@
 
 <param name="show-pattern" select="1" />
 <param name="show-range" select="1" />
-<param name="show-quartiles" select="0" />
 
 <template name="sep">
     <value-of select="$normal-style" />
@@ -151,6 +150,18 @@
         <value-of select="$stats-style" />
         <text> range=</text>
         <value-of select="values/summary/min" />
+        <if test="$show-range &gt; 2">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q1" />
+        </if>
+        <if test="$show-range &gt; 1">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q2" />
+        </if>
+        <if test="$show-range &gt; 2">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q3" />
+        </if>
         <value-of select="$ellipsis" />
         <value-of select="values/summary/max" />
     </if>
@@ -164,6 +175,18 @@
         <value-of select="$stats-style" />
         <text> range=</text>
         <value-of select="values/summary/min" />
+        <if test="$show-range &gt; 2">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q1" />
+        </if>
+        <if test="$show-range &gt; 1">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q2" />
+        </if>
+        <if test="$show-range &gt; 2">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q3" />
+        </if>
         <value-of select="$ellipsis" />
         <value-of select="values/summary/max" />
     </if>
@@ -183,6 +206,18 @@
         <value-of select="$stats-style" />
         <text> range=</text>
         <value-of select="values/summary/min" />
+        <if test="$show-range &gt; 2">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q1" />
+        </if>
+        <if test="$show-range &gt; 1">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q2" />
+        </if>
+        <if test="$show-range &gt; 2">
+            <value-of select="$ellipsis" />
+            <value-of select="values/summary/q3" />
+        </if>
         <value-of select="$ellipsis" />
         <value-of select="values/summary/max" />
     </if>

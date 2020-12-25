@@ -77,6 +77,22 @@ def get_config(args):
         "preventing the pattern from being reported; the proportion of "
         '"empty" data permitted in a field (default: %(default)s)')
     parser.add_argument(
+        '--hide-range', action='store_const', dest='show_range', const=0,
+        default=1)
+    parser.add_argument(
+        '-r', '--show-range', action='count',
+        help="If set, show the range of numeric (and temporal) fields. Can be "
+        "specified twice to include the median as well as the minimum and "
+        "maximum, and a third time to include all quartiles. Defaults to just "
+        "showing the range; use --hide-range to hide all range info")
+    parser.add_argument(
+        '--hide-pattern', action='store_false', dest='show_pattern',
+        default=True)
+    parser.add_argument(
+        '--show-pattern', action='store_true',
+        help="If set, show the pattern determined for fixed length string "
+        "fields. If disabled, pattern information will be hidden")
+    parser.add_argument(
         '--min-timestamp', type=min_timestamp, metavar='WHEN',
         default='20 years',
         help="The minimum timestamp to use when guessing whether floating "
@@ -173,17 +189,21 @@ def print_structure(config, structure):
         'ellipsis':       term.green('..'),
         'truncation':     term.green('$'),
     }
+    params = {
+        'show-pattern':   str(int(config.show_pattern)),
+        'show-range':     str(config.show_range),
+    }
+    transform = get_transform('cli.xsl')
     # XML 1.0 doesn't permit controls characters (other than whitespace) so
     # we'll use some chars from the private-use region (E000-) for the XSLT
     # params, then replace them after the transform in the vague hope no-one
     # else is going to use them in data that could be included in stats :). XML
     # 1.1 fixes this ... but nothing supports it.
-    transform = get_transform('cli.xsl')
     xsl_chars = {style: chr(0xE000 + i) for i, style in enumerate(styles)}
     output = str(transform(xml(structure), **{
         style: transform.strparam(char)
         for style, char in xsl_chars.items()
-    }))
+    }, **params))
     output = output.translate(str.maketrans({
         xsl_chars[style]: styles[style]
         for style in styles
