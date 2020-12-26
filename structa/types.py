@@ -54,6 +54,23 @@ class Stats:
         return format_repr(self, sample='...')
 
     def __xml__(self):
+        indexes = {i: '.' for i in range(10)}
+        try:
+            delta = self.max - self.min
+        except TypeError:
+            # Cannot calculate a 1d quartile graph for vectors like str; note
+            # that we use subtraction for this test because simply testing if
+            # min/max are numbers is not sufficient. Timestamps can be
+            # subtracted (and, crucially, divided to produce a float) but do
+            # not count as numbers in Python's number hierarchy (not sure why)
+            graph = ''
+        else:
+            if delta:
+                for n, q in enumerate((self.q1, self.q2, self.q3), start=1):
+                    indexes[int(10 * (q - self.min) / delta)] = str(n)
+                graph = ''.join(indexes[i] for i in range(10))
+            else:
+                graph = '..'
         content = [
             tag.summary(
                 tag.min(self.min),
@@ -61,6 +78,12 @@ class Stats:
                 tag.q2(self.q2),
                 tag.q3(self.q3),
                 tag.max(self.max),
+                merge_siblings(
+                    tag.graph(
+                        tag.lit(c) if c == '.' else tag.pat(c)
+                        for c in graph
+                    )
+                ),
                 unique=self.unique
             )
         ]
