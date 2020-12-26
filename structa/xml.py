@@ -1,7 +1,9 @@
 import lxml.etree as et
+from copy import copy
 from pkg_resources import resource_stream
 
 from . import ui
+from .format import pairwise
 
 
 def xml(obj):
@@ -19,6 +21,40 @@ def get_transform(name):
     module.
     """
     return et.XSLT(et.parse(resource_stream(ui.__name__, name)))
+
+
+def merge_siblings(elem):
+    """
+    Consolidate the content of adjacent sibling child elements with the same
+    tag. For example:
+
+        >>> x = XML('<doc><a>a</a><a>b</a><a>c</a><b>d</b><a>e</a></doc>')
+        >>> tostring(merge_siblings(x))
+        b'<doc><a>abc</a><b>d</b><a>e</a></doc>'
+
+    Note that the function only deals with *direct* child elements of *elem*;
+    it does nothing to descendents of those children, even if they have the
+    same tag as their parent:
+
+        >>> x = XML('<doc><a>a<a>b</a></a><a>c</a><b>d</b><a>e</a></doc>')
+        >>> tostring(merge_siblings(x))
+        b'<doc><a>a<a>b</a>c</a><b>d</b><a>e</a></doc>'
+    """
+    result = copy(elem)
+    for this, prior in pairwise(reversed(result)):
+        if (
+            this.tag == prior.tag and
+            (prior.tail is None or not prior.tail.strip())
+        ):
+            if len(prior):
+                prior[-1].tail = (prior[-1].tail or '') + (this.text or '')
+            else:
+                prior.text = (prior.text or '') + (this.text or '')
+            for child in this:
+                prior.append(child)
+            prior.tail = (prior.tail or '') + (this.tail or '')
+            result.remove(this)
+    return result
 
 
 class ElementFactory:
