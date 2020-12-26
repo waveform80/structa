@@ -36,6 +36,15 @@ def main(args=None):
         return 0
 
 
+RANGE_CONFIGS = {
+    'hidden':    0,
+    'limits':    1,
+    'median':    2,
+    'quartiles': 3,
+    'graph':     4,
+}
+
+
 def get_config(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -77,14 +86,16 @@ def get_config(args):
         "preventing the pattern from being reported; the proportion of "
         '"empty" data permitted in a field (default: %(default)s)')
     parser.add_argument(
-        '--hide-range', action='store_const', dest='show_range', const=0,
-        default=1)
+        '--hide-range', action='store_const', dest='show_range',
+        const='hidden', default='limits')
     parser.add_argument(
-        '-r', '--show-range', action='count',
-        help="If set, show the range of numeric (and temporal) fields. Can be "
-        "specified twice to include the median as well as the minimum and "
-        "maximum, and a third time to include all quartiles. Defaults to just "
-        "showing the range; use --hide-range to hide all range info")
+        '--show-range', action='store', choices=RANGE_CONFIGS.keys(),
+        help="Show the range of numeric (and temporal) fields in a variety of "
+        "forms. The default is 'limits' which simply displays the minimum and "
+        "maximum; 'median' includes the median between these; 'quartiles' "
+        "shows all three quartiles between the minimum and maximum; 'graph' "
+        "displays a crude chart showing the positions of the quartiles "
+        "relative to the limits. Use --hide-range to hide all range info")
     parser.add_argument(
         '--hide-pattern', action='store_false', dest='show_pattern',
         default=True)
@@ -182,8 +193,8 @@ def print_structure(config, structure):
         'key-style':      '',
         'type-style':     term.cyan,
         'stats-style':    term.normal,
-        'pattern-style':  term.normal,
-        'chars-style':    term.blue,
+        'pattern-style':  term.bold,
+        'literal-style':  term.normal,
         'req-style':      '',
         'opt-style':      term.red('?'),
         'ellipsis':       term.green('..'),
@@ -191,7 +202,7 @@ def print_structure(config, structure):
     }
     params = {
         'show-pattern':   str(int(config.show_pattern)),
-        'show-range':     str(config.show_range),
+        'show-range':     str(RANGE_CONFIGS[config.show_range]),
     }
     transform = get_transform('cli.xsl')
     # XML 1.0 doesn't permit controls characters (other than whitespace) so
