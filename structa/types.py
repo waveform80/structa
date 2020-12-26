@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from .collections import Counter, FrozenCounter
 from .conversions import try_conversion, parse_bool
 from .format import format_int, format_repr
-from .xml import ElementFactory, xml
+from .xml import ElementFactory, xml, merge_siblings
 
 
 class MyElementFactory(ElementFactory):
@@ -508,8 +508,8 @@ class Str(Scalar):
         return tag.str(
             iter(super().__xml__()),
             tag.lengths(iter(xml(self.lengths))),
-            pattern=None if self.pattern is None else
-                    ''.join(str(c) for c in self.pattern)
+            merge_siblings(tag.pattern(xml(c) for c in self.pattern))
+                if self.pattern else []
         )
 
     def __add__(self, other):
@@ -570,7 +570,10 @@ class StrRepr(Repr):
         return 'str of {self.content} pattern={self.pattern}'.format(self=self)
 
     def __xml__(self):
-        return tag.strof(xml(self.content), pattern=repr(self.pattern))
+        return tag.strof(
+            xml(self.content),
+            tag.pattern(tag.pat(str(self.pattern)))
+        )
 
     def __add__(self, other):
         if self == other:
