@@ -58,22 +58,20 @@ class CharClass(frozenset):
 
     def __xml__(self):
         if len(self) == 0:
-            tag.chars()
+            tag.pat()
         elif len(self) == 1:
-            # Yes, this is a string instead of an element, but that's valid
-            # for inclusion in an ElementTree
-            return format_chars(self)
+            return tag.lit(format_chars(self))
         else:
             try:
-                return tag.chars({
-                        oct_digit:   'o',
-                        dec_digit:   'd',
-                        hex_digit:   'x',
-                        ident_first: 'I',
-                        ident_char:  'i',
+                return tag.pat({
+                    oct_digit:   'o',
+                    dec_digit:   'd',
+                    hex_digit:   'x',
+                    ident_first: 'I',
+                    ident_char:  'i',
                 }[self])
             except KeyError:
-                return tag.chars('[{ranges}]'.format(ranges=format_chars(self)))
+                return tag.pat('[{ranges}]'.format(ranges=format_chars(self)))
 
     def __and__(self, other):
         result = super().__and__(other)
