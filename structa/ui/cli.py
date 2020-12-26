@@ -104,6 +104,13 @@ def get_config(args):
         help="If set, show the pattern determined for fixed length string "
         "fields. If disabled, pattern information will be hidden")
     parser.add_argument(
+        '--hide-lengths', action='store_false', dest='show_lengths',
+        default=False)
+    parser.add_argument(
+        '--show-lengths', action='store_true',
+        help="If set, display the range of lengths of string fields in the "
+        "same format as specified by --show-range")
+    parser.add_argument(
         '--min-timestamp', type=min_timestamp, metavar='WHEN',
         default='20 years',
         help="The minimum timestamp to use when guessing whether floating "
@@ -202,6 +209,7 @@ def print_structure(config, structure):
     }
     params = {
         'show-pattern':   str(int(config.show_pattern)),
+        'show-lengths':   str(int(config.show_lengths)),
         'show-range':     str(RANGE_CONFIGS[config.show_range]),
     }
     transform = get_transform('cli.xsl')
