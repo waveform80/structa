@@ -97,10 +97,12 @@ class ElementFactory:
             node.append(contents)
         else:
             try:
-                for content in contents:
-                    self._append(node, content)
+                it = iter(contents)
             except TypeError:
                 self._append(node, self._format(contents))
+            else:
+                for content in it:
+                    self._append(node, content)
 
     def _element(self, _name, *contents, **attrs):
         """
