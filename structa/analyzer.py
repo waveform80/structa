@@ -136,7 +136,12 @@ class Analyzer:
             # measurement of all the ids in *it*, we take the ids of all top
             # level items in *it*
             try:
-                self._top_ids = {id(item) for item in it}
+                if isinstance(it, sources_list):
+                    self._top_ids = {
+                        id(subitem) for item in it for subitem in item
+                    }
+                else:
+                    self._top_ids = {id(item) for item in it}
             except TypeError:
                 # The top-level item is not iterable ... this is going to be
                 # quick :)
