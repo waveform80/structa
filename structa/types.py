@@ -759,11 +759,12 @@ class Fields(Type):
 
 @total_ordering
 class Field(Type):
-    __slots__ = ('value', 'optional')
+    __slots__ = ('value', 'count', 'optional')
 
-    def __init__(self, value, optional=False):
+    def __init__(self, value, count, optional=False):
         super().__init__()
         self.value = value
+        self.count = count
         self.optional = optional
 
     def __str__(self):
@@ -774,7 +775,8 @@ class Field(Type):
 
     def __add__(self, other):
         if self == other:
-            return Field(self.value, self.optional or other.optional)
+            return Field(self.value, self.count + other.count,
+                         self.optional or other.optional)
         return NotImplemented
 
     def __lt__(self, other):
@@ -784,7 +786,9 @@ class Field(Type):
 
     def __hash__(self):
         # We define a hash to permit Field to be present in a Fields
-        # instance; note that this implies a Field is effectively immutable
+        # instance; note that this implies a Field is effectively immutable.
+        # Only the value is used for the hash, as only the value is compared
+        # for equality (and things that compare equal must have equal hashes)
         return hash((self.value,))
 
     def compare(self, other):

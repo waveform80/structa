@@ -194,7 +194,11 @@ class Analyzer:
                     )
                 ):
                     keys = self._match(
-                        (item.key.value for item in path.content),
+                        (
+                            item.key.value
+                            for item in path.content
+                            for i in range(item.key.count)
+                        ),
                         (path,), threshold=0)
                     return path.with_content([
                         DictField(keys, sum(
@@ -417,7 +421,7 @@ class Analyzer:
                 if path and isinstance(path[-1], (Dict, Tuple)):
                     if len(sample) < threshold:
                         return Fields(
-                            Field(key, optional=count < parent_card)
+                            Field(key, count, optional=count < parent_card)
                             for key, count in sample.items()
                         )
 
