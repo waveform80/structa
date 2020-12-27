@@ -352,6 +352,14 @@ class List(Container):
         return isinstance(value, list)
 
 
+class sources_list(list):
+    pass
+
+
+class SourcesList(List):
+    pass
+
+
 class Scalar(Type):
     __slots__ = ('values',)
 

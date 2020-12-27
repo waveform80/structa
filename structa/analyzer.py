@@ -37,6 +37,8 @@ from .types import (
     Empty,
     Value,
     StrRepr,
+    SourcesList,
+    sources_list,
 )
 
 
@@ -376,6 +378,8 @@ class Analyzer:
         items = list(items)
         if not items:
             return Empty()
+        elif all(isinstance(item, sources_list) for item in items):
+            return SourcesList(items)
         elif all(isinstance(item, tuple) for item in items):
             return Tuple(items)
         elif all(isinstance(item, list) for item in items):

@@ -11,6 +11,7 @@ from blessings import Terminal
 
 from ..analyzer import Analyzer, ValidationWarning
 from ..conversions import parse_duration_or_timestamp
+from ..types import sources_list, SourcesList
 from ..source import Source
 from ..xml import xml, get_transform
 from .progress import Progress
@@ -48,9 +49,10 @@ RANGE_CONFIGS = {
 def get_config(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        'file', nargs='?', type=argparse.FileType('rb'), default=sys.stdin,
-        help="The data-file to analyze; if this is - or unspecified then "
-        "stdin will be read for the data")
+        'file', nargs='*', type=argparse.FileType('rb'), default=sys.stdin,
+        help="The data-file(s) to analyze; if this is - or unspecified then "
+        "stdin will be read for the data; if multiple files are specified "
+        "all will be read and analyzed as an array of similar structures")
     parser.add_argument(
         '-f', '--format', choices=('auto', 'csv', 'json', 'yaml'), default='auto',
         help="The format of the data file; if this is unspecified, it will "
@@ -164,17 +166,18 @@ def get_config(args):
 
 def get_structure(config):
     with Progress() as progress:
-        source = MySource.from_config(config)
+        data = sources_list()
+        for file in config.file:
+            source = MySource.from_config(config, file)
+            if config.encoding == 'auto':
+                progress.message('Guessed encoding {source.encoding}'.format(
+                    source=source))
+            if config.format == 'auto':
+                progress.message('Guessed format {source.format}'.format(
+                    source=source))
+            progress.message('Reading file {file.name}'.format(file=file))
+            data.append(source.data)
         analyzer = MyAnalyzer.from_config(config)
-        if config.encoding == 'auto':
-            progress.message('Guessed encoding {source.encoding}'.format(
-                source=source))
-        if config.format == 'auto':
-            progress.message('Guessed format {source.format}'.format(
-                source=source))
-        progress.message('Reading file {config.file.name}'.format(
-            config=config))
-        data = source.data
         queue = Queue()
         thread = Thread(
             target=lambda analyzer, data, queue:
@@ -189,7 +192,9 @@ def get_structure(config):
             thread.join(0.25)
             if not thread.is_alive():
                 break
-    return queue.get(timeout=1, block=True)
+    structure = queue.get(timeout=1, block=True)
+    assert isinstance(structure, SourcesList)
+    return structure.content[0]
 
 
 def print_structure(config, structure):
@@ -246,9 +251,9 @@ class MyAnalyzer(Analyzer):
 
 class MySource(Source):
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, config, file):
         return cls(
-            source=config.file,
+            source=file,
             encoding=config.encoding,
             encoding_strict=config.encoding_strict,
             format=config.format,
