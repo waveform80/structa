@@ -49,15 +49,15 @@ class Stats:
             # that we use subtraction for this test because simply testing if
             # min/max are numbers is not sufficient. Timestamps can be
             # subtracted (and, crucially, divided to produce a float) but do
-            # not count as numbers in Python's number hierarchy (not sure why)
+            # not count as numbers in Python's number hierarchy
             graph = ''
         else:
             if delta:
                 for n, q in enumerate((self.q1, self.q2, self.q3), start=1):
-                    indexes[int(10 * (q - self.min) / delta)] = str(n)
+                    indexes[int(9 * (q - self.min) / delta)] = str(n)
                 graph = ''.join(indexes[i] for i in range(10))
             else:
-                graph = '..'
+                graph = ''
         content = [
             tag.summary(
                 tag.min(self.min),
