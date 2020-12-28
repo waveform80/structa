@@ -41,6 +41,12 @@ class Stats:
         return format_repr(self, sample='...')
 
     def __xml__(self):
+        content = [self._xml_summary()]
+        if not self.unique:
+            content.append(self._xml_sample())
+        return tag.stats(content)
+
+    def _xml_summary(self):
         indexes = {i: '.' for i in range(10)}
         try:
             delta = self.max - self.min
@@ -58,42 +64,45 @@ class Stats:
                 graph = ''.join(indexes[i] for i in range(10))
             else:
                 graph = ''
-        content = [
-            tag.summary(
-                tag.min(self.min),
-                tag.q1(self.q1),
-                tag.q2(self.q2),
-                tag.q3(self.q3),
-                tag.max(self.max),
-                merge_siblings(
-                    tag.graph(
-                        tag.lit(c) if c == '.' else tag.pat(c)
-                        for c in graph
-                    )
-                ),
-                unique=self.unique
+        return tag.summary(
+            tag.min(format_sample(self.min)) if len(self.sample) > 1 else [],
+            tag.q1(format_sample(self.q1)) if len(self.sample) > 4 else [],
+            tag.q2(format_sample(self.q2)) if len(self.sample) > 2 else [],
+            tag.q3(format_sample(self.q3)) if len(self.sample) > 4 else [],
+            tag.max(format_sample(self.max)),
+            merge_siblings(
+                tag.graph(
+                    tag.fill(c) if c == '.' else tag.lit(c)
+                    for c in graph
+                )
+            ) if graph else [],
+            values=format_int(len(self.sample)),
+            count=format_int(self.card),
+            unique=self.unique
+        )
+
+    def _xml_sample(self):
+        if len(self.sample) > 6:
+            common = self.sample.most_common()
+            return tag.sample(
+                [
+                    tag.value(format_sample(value),
+                              count=format_int(count))
+                    for value, count in common[:3]
+                ],
+                tag.more(),
+                [
+                    tag.value(format_sample(value),
+                              count=format_int(count))
+                    for value, count in common[-3:]
+                ],
             )
-        ]
-        if not self.unique:
-            if len(self.sample) > 20:
-                common = self.sample.most_common()
-                content.append(
-                    tag.sample(
-                        [tag.value(value, count=count)
-                         for value, count in common[:10]],
-                        tag.more(),
-                        [tag.value(value, count=count)
-                         for value, count in common[-10:]],
-                    )
-                )
-            else:
-                content.append(
-                    tag.sample(
-                        tag.value(value, count=count)
-                        for value, count in self.sample.most_common()
-                    )
-                )
-        return tag.stats(content)
+        else:
+            return tag.sample(
+                tag.value(format_sample(value),
+                          count=format_int(count))
+                for value, count in self.sample.most_common()
+            )
 
     def __eq__(self, other):
         if isinstance(other, Stats):
