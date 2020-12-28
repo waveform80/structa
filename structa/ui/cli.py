@@ -88,6 +88,33 @@ def get_config(args):
         "preventing the pattern from being reported; the proportion of "
         '"empty" data permitted in a field (default: %(default)s)')
     parser.add_argument(
+        '--str-limit', type=num, metavar='NUM', default=20,
+        help="The length beyond which only the lengths of strs will be "
+        "reported; below this the actual value of the string will be "
+        "displayed (default: %(default)s)")
+    parser.add_argument(
+        '--hide-count', action='store_false', dest='show_count',
+        default=False)
+    parser.add_argument(
+        '--show-count', action='store_true',
+        help="If set, show the count of items in containers, the count of "
+        "unique scalar values, and the count of all sample values (if "
+        "--show-samples is set). If disabled, counts will be hidden")
+    parser.add_argument(
+        '--hide-lengths', action='store_false', dest='show_lengths',
+        default=False)
+    parser.add_argument(
+        '--show-lengths', action='store_true',
+        help="If set, display the range of lengths of string fields in the "
+        "same format as specified by --show-range")
+    parser.add_argument(
+        '--hide-pattern', action='store_false', dest='show_pattern',
+        default=True)
+    parser.add_argument(
+        '--show-pattern', action='store_true',
+        help="If set, show the pattern determined for fixed length string "
+        "fields. If disabled, pattern information will be hidden")
+    parser.add_argument(
         '--hide-range', action='store_const', dest='show_range',
         const='hidden', default='limits')
     parser.add_argument(
@@ -99,19 +126,12 @@ def get_config(args):
         "displays a crude chart showing the positions of the quartiles "
         "relative to the limits. Use --hide-range to hide all range info")
     parser.add_argument(
-        '--hide-pattern', action='store_false', dest='show_pattern',
-        default=True)
-    parser.add_argument(
-        '--show-pattern', action='store_true',
-        help="If set, show the pattern determined for fixed length string "
-        "fields. If disabled, pattern information will be hidden")
-    parser.add_argument(
-        '--hide-lengths', action='store_false', dest='show_lengths',
+        '--hide-samples', action='store_false', dest='show_samples',
         default=False)
     parser.add_argument(
-        '--show-lengths', action='store_true',
-        help="If set, display the range of lengths of string fields in the "
-        "same format as specified by --show-range")
+        '--show-samples', action='store_true',
+        help="If set, show samples of non-unique scalar values including the "
+        "most and least common values. If disabled, samples will be hidden")
     parser.add_argument(
         '--min-timestamp', type=min_timestamp, metavar='WHEN',
         default='20 years',
@@ -200,22 +220,25 @@ def get_structure(config):
 def print_structure(config, structure):
     term = Terminal()
     styles = {
-        'normal-style':   term.normal,
-        'unique-style':   term.red('*'),
-        'key-style':      '',
-        'type-style':     term.cyan,
-        'stats-style':    term.normal,
-        'pattern-style':  term.bold,
-        'literal-style':  term.normal,
-        'req-style':      '',
-        'opt-style':      term.red('?'),
-        'ellipsis':       term.green('..'),
-        'truncation':     term.green('$'),
+        'normal-style':    term.normal,
+        'unique-style':    term.underline,
+        'type-style':      term.cyan,
+        'fill-style':      term.green,
+        'suffix-style':    term.green,
+        'pattern-style':   term.yellow,
+        'literal-style':   term.normal,
+        'required-suffix': '',
+        'optional-suffix': term.red('?'),
+        'ellipsis':        term.green('..'),
+        'truncation':      term.green('$'),
     }
     params = {
-        'show-pattern':   str(int(config.show_pattern)),
-        'show-lengths':   str(int(config.show_lengths)),
-        'show-range':     str(RANGE_CONFIGS[config.show_range]),
+        'show-count':      str(int(config.show_count)),
+        'show-pattern':    str(int(config.show_pattern)),
+        'show-samples':    str(int(config.show_samples)),
+        'show-lengths':    str(int(config.show_lengths)),
+        'show-range':      str(RANGE_CONFIGS[config.show_range]),
+        'str-limit':       str(int(config.str_limit)),
     }
     transform = get_transform('cli.xsl')
     # XML 1.0 doesn't permit controls characters (other than whitespace) so

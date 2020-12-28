@@ -116,7 +116,7 @@ class ElementFactory:
         any type accepted by :meth:`_format`) to a *node*.
         """
         if isinstance(contents, str):
-            if contents != '':
+            if contents:
                 if len(node) == 0:
                     if node.text is None:
                         node.text = contents
