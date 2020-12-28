@@ -7,24 +7,11 @@ from collections.abc import Mapping
 
 from .collections import Counter, FrozenCounter
 from .conversions import try_conversion, parse_bool
-from .format import format_int, format_repr
+from .format import format_int, format_repr, format_sample
 from .xml import ElementFactory, xml, merge_siblings
 
 
-class MyElementFactory(ElementFactory):
-    def _format(self, value):
-        if isinstance(value, datetime):
-            return '{0:%Y-%m-%d %H:%M:%S}'.format(value)
-        elif isinstance(value, float):
-            return '{0:.7g}'.format(value)
-        elif isinstance(value, int):
-            return format_int(value)
-        elif isinstance(value, bool):
-            return ('false', 'true')[value]
-        else:
-            return super()._format(value)
-
-tag = MyElementFactory()
+tag = ElementFactory()
 
 
 class Stats:
