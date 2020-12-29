@@ -5,7 +5,7 @@ import warnings
 from datetime import datetime, timedelta
 from fractions import Fraction
 from threading import Thread
-from queue import Queue
+from queue import Queue, Empty
 
 from blessings import Terminal
 
@@ -184,37 +184,70 @@ def get_config(args):
     return parser.parse_args(args)
 
 
+def _structure_thread(config, analyzer, messages, results):
+    data = sources_list()
+    messages.put(0)
+    for num, file in enumerate(config.file, start=1):
+        messages.put('Reading file {file.name}'.format(file=file))
+        source = MySource.from_config(config, file)
+        if config.encoding == 'auto':
+            messages.put('Guessed encoding {source.encoding}'.format(
+                source=source))
+        if config.format == 'auto':
+            messages.put('Guessed format {source.format}'.format(
+                source=source))
+        messages.put('Parsing data')
+        data.append(source.data)
+        messages.put(num / len(config.file))
+    messages.put(0)
+    messages.put('Measuring data')
+    progress = analyzer.measure(data)
+    messages.put(0)
+    messages.put('Analyzing data')
+    struct = analyzer.analyze(data, progress)
+    messages.put(0)
+    messages.put('Merging common structures')
+    struct = analyzer.merge(struct, progress)
+    results.put(struct)
+
+
 def get_structure(config):
     with Progress() as progress:
-        data = sources_list()
-        for file in config.file:
-            source = MySource.from_config(config, file)
-            if config.encoding == 'auto':
-                progress.message('Guessed encoding {source.encoding}'.format(
-                    source=source))
-            if config.format == 'auto':
-                progress.message('Guessed format {source.format}'.format(
-                    source=source))
-            progress.message('Reading file {file.name}'.format(file=file))
-            data.append(source.data)
+        struct = None
+        messages = Queue()
+        results = Queue()
         analyzer = MyAnalyzer.from_config(config)
-        queue = Queue()
         thread = Thread(
-            target=lambda analyzer, data, queue:
-                queue.put(analyzer.analyze(data)),
-            args=(analyzer, data, queue),
+            target=_structure_thread,
+            args=(config, analyzer, messages, results),
             daemon=True)
         thread.start()
-        progress.message('Analyzing structure')
+
+        def handle_progress():
+            try:
+                msg = messages.get(timeout=0.25)
+            except Empty:
+                pass
+            else:
+                if isinstance(msg, str):
+                    progress.message(msg)
+                elif isinstance(msg, (int, float)):
+                    if msg == 0:
+                        progress.reset_eta()
+                    progress.position = msg
+
         while True:
+            handle_progress()
             if analyzer.progress is not None:
                 progress.position = analyzer.progress
-            thread.join(0.25)
+            thread.join(0)
             if not thread.is_alive():
                 break
-    structure = queue.get(timeout=1, block=True)
-    assert isinstance(structure, SourcesList)
-    return structure.content[0]
+        while not messages.empty():
+            handle_progress()
+        struct = results.get(timeout=1)
+    assert isinstance(struct, SourcesList)
+    return struct.content[0]
 
 
 def print_structure(config, structure):
@@ -268,8 +301,7 @@ class MyAnalyzer(Analyzer):
             max_numeric_len=config.max_numeric_len,
             strip_whitespace=config.strip_whitespace,
             min_timestamp=config.min_timestamp,
-            max_timestamp=config.max_timestamp,
-            track_progress=True)
+            max_timestamp=config.max_timestamp)
 
 
 class MySource(Source):

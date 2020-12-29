@@ -107,7 +107,7 @@ class Analyzer:
     def __init__(self, *, bad_threshold=Fraction(2, 100),
                  empty_threshold=Fraction(98, 100), field_threshold=20,
                  max_numeric_len=30, strip_whitespace=False,
-                 min_timestamp=None, max_timestamp=None, track_progress=False):
+                 min_timestamp=None, max_timestamp=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.field_threshold = field_threshold
@@ -120,57 +120,85 @@ class Analyzer:
             max_timestamp = now + relativedelta(years=10)
         self.min_timestamp = min_timestamp.timestamp()
         self.max_timestamp = max_timestamp.timestamp()
-        self.track_progress = track_progress
-        self._all_ids = set()
-        self._all_ids_card = 0
-        self._top_ids = set()
-        self._top_ids_card = 0
+        self._steps = 0
+        self._steps_done = 0
 
-    def analyze(self, it):
+    def measure(self, data):
         """
-        Given some value *it* (typically an iterable or mapping), return a
-        description of its structure.
+        Given some value *data* (typically an iterable or mapping), construct
+        an object necessary for tracking the progress of the :meth:`analyze`
+        and :meth:`merge` methods. If this is not called prior to these
+        methods, the :attr:`progress` attribute will simply return :data:`None`
+        during their run.
+
+        As measurement is itself a potentially lengthy process,
+        :attr:`progress` will be reported as a function of the top-level items
+        within *data* during the run of this method. The value returned can be
+        passed as the optional *progress* argument of :meth:`analyze` and
+        :meth:`merge`.
         """
-        if self.track_progress:
-            # For the purposes of providing some progress reporting during
-            # measurement of all the ids in *it*, we take the ids of all top
-            # level items in *it*
+        # For the purposes of providing some progress reporting during
+        # measurement of all the ids in *it*, we take the ids of all top
+        # level items in *it*
+        self._steps_done = 0
+        try:
+            if isinstance(data, sources_list):
+                top = {id(item) for source in data for item in source}
+            else:
+                top = {id(item) for item in data}
+        except TypeError:
+            # The top-level item is not iterable ... this is going to be
+            # quick :)
+            top = {id(data)}
+        self._steps = len(top)
+        start = datetime.now()
+        count = 0
+        for item in flatten(data):
+            count += 1
             try:
-                if isinstance(it, sources_list):
-                    self._top_ids = {
-                        id(subitem) for item in it for subitem in item
-                    }
-                else:
-                    self._top_ids = {id(item) for item in it}
-            except TypeError:
-                # The top-level item is not iterable ... this is going to be
-                # quick :)
+                top.remove(id(item))
+            except KeyError:
                 pass
             else:
-                self._top_ids_card = len(self._top_ids)
-            for item in flatten(it):
-                self._top_ids.discard(id(item))
-                self._all_ids.add(id(item))
-        self._all_ids_card = len(self._all_ids)
-        return self._merge(self._analyze(it, ()))
+                self._steps_done = self._steps - len(top)
+        return count
+
+    def analyze(self, data, progress=None):
+        """
+        Given some value *data* (typically an iterable or mapping), return a
+        description of its structure.
+        """
+        if progress is None:
+            self._steps = 0
+        else:
+            assert isinstance(progress, int)
+            self._steps_done = 0
+            self._steps = progress
+        return self._analyze(data, ())
+
+    def merge(self, struct, progress=None):
+        """
+        Given some *struct* (as returned by :meth:`analyze`), merge common
+        sub-structures within it, returning the top level structure.
+        """
+        if progress is None:
+            self._steps = 0
+        else:
+            assert isinstance(progress, int)
+            self._steps_done = 0
+            self._steps = progress
+        return self._merge(struct)
 
     @property
     def progress(self):
         """
-        Tracks the current analysis progress as a :class:`~fractions.Fraction`.
+        Tracks the current analysis progress as a :class:`~fractions.Fraction`
+        during the run of :meth:`measure`, :meth:`analyze`, or :meth:`merge`.
+        Note that unless :meth:`measure` is called first, the progress of the
+        latter methods will be reported as :data:`None`.
         """
-        top_ratio = Fraction(1, 5)
-        if self._all_ids_card:
-            return (
-                top_ratio +
-                (1 - top_ratio) *
-                    (1 - Fraction(len(self._all_ids), self._all_ids_card)))
-        elif self._top_ids_card:
-            return (
-                top_ratio *
-                    (1 - Fraction(len(self._top_ids), self._top_ids_card)))
-        else:
-            return None
+        if self._steps:
+            return max(0, min(1, Fraction(self._steps_done, self._steps)))
 
     def _merge(self, path):
         """
@@ -180,6 +208,8 @@ class Analyzer:
         which maps to the singular structure.
         """
         if isinstance(path, Container):
+            if self._steps:
+                self._steps_done += path.lengths.card
             if isinstance(path, Dict):
                 # Only Dicts containing containers are merged; Dicts (directly)
                 # containing scalars, and Tuples are left alone as containers
@@ -200,6 +230,10 @@ class Analyzer:
                             for i in range(item.key.count)
                         ),
                         (path,), threshold=0)
+                    # XXX BIIIIG hold-up - everything below here never gets
+                    # touched by merge and hence never gets used for progress
+                    # (not to mention we potentially need to re-merge the
+                    # result of this anyway)
                     return path.with_content([
                         DictField(keys, sum(
                             (p.value for p in path.content[1:]),
@@ -207,7 +241,7 @@ class Analyzer:
                         ))
                     ])
                 return path.with_content([
-                    DictField(field.key, self._merge(field.value))
+                    DictField(self._merge(field.key), self._merge(field.value))
                     for field in path.content
                 ])
             else:
@@ -216,6 +250,13 @@ class Analyzer:
                     for item in path.content
                 ])
         else:
+            # XXX Doesn't work with Field, NumRepr, StrpRepr ... basically there's
+            # lots of things with no .values
+            if self._steps:
+                if isinstance(path, Field):
+                    self._steps_done += path.count
+                else:
+                    self._steps_done += path.values.card
             return path
 
     def _analyze(self, it, path, *, threshold=None, card=1):
@@ -297,8 +338,8 @@ class Analyzer:
         by *path*, a sequence of pattern-matching objects.
         """
         if not path:
-            if self.track_progress:
-                self._all_ids.discard(id(it))
+            if self._steps:
+                self._steps_done += 1
             yield it
         else:
             head, *tail = path
@@ -342,9 +383,9 @@ class Analyzer:
                             .format(key=key, head=head)))
         else:
             # keys
-            if self.track_progress:
+            if self._steps:
                 for item in it:
-                    self._all_ids.discard(id(item))
+                    self._steps_done += 1
                     yield item
             else:
                 yield from it

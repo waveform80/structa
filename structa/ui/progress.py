@@ -64,6 +64,13 @@ class Progress:
                 self.term.stream.flush()
         self.show()
 
+    def reset_eta(self):
+        """
+        Reset the estimated time to finish; useful if multiple distinct tasks
+        are being displayed in one block of :class:`Progress`.
+        """
+        self._started = None
+
     @property
     def position(self):
         """

@@ -101,9 +101,10 @@
     <text>{ </text>
     <if test="$show-count">
         <value-of select="$suffix-style" />
-        <text> count=</text>
+        <text>count=</text>
         <value-of select="$normal-style" />
         <value-of select="lengths/summary/@count" />
+        <text> </text>
     </if>
     <for-each select="content/*">
         <apply-templates select="." />
@@ -116,9 +117,10 @@
     <text>[ </text>
     <if test="$show-count">
         <value-of select="$suffix-style" />
-        <text> count=</text>
+        <text>count=</text>
         <value-of select="$normal-style" />
         <value-of select="lengths/summary/@count" />
+        <text> </text>
     </if>
     <for-each select="content/*">
         <apply-templates select="." />
@@ -131,9 +133,10 @@
     <text>( </text>
     <if test="$show-count">
         <value-of select="$suffix-style" />
-        <text> count=</text>
+        <text>count=</text>
         <value-of select="$normal-style" />
         <value-of select="lengths/summary/@count" />
+        <text> </text>
     </if>
     <for-each select="content/*">
         <apply-templates select="." />
