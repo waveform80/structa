@@ -230,15 +230,11 @@ class Analyzer:
                             for i in range(item.key.count)
                         ),
                         (path,), threshold=0)
-                    # XXX BIIIIG hold-up - everything below here never gets
-                    # touched by merge and hence never gets used for progress
-                    # (not to mention we potentially need to re-merge the
-                    # result of this anyway)
                     return path.with_content([
-                        DictField(keys, sum(
+                        DictField(self._merge(keys), self._merge(sum(
                             (p.value for p in path.content[1:]),
                             path.content[0].value
-                        ))
+                        )))
                     ])
                 return path.with_content([
                     DictField(self._merge(field.key), self._merge(field.value))

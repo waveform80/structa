@@ -587,6 +587,10 @@ class Repr(Type):
         # dec pattern when it's actually hex in the merge scenario?
         return super().compare(other) and self.content.compare(other.content)
 
+    @property
+    def values(self):
+        return self.content.values
+
 
 class StrRepr(Repr):
     __slots__ = ()
