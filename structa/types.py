@@ -192,8 +192,9 @@ class Container(Type):
 
     def __xml__(self):
         return tag.container(
-            tag.content(xml(field) for field in self.content),
-            tag.lengths(iter(xml(self.lengths))),
+            tag.content(xml(field) for field in self.content)
+                if self.content is not None else [],
+            tag.lengths(xml(self.lengths)),
         )
 
     def __add__(self, other):
