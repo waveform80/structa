@@ -58,7 +58,7 @@ class CharClass(frozenset):
 
     def __xml__(self):
         if len(self) == 0:
-            tag.pat()
+            return tag.pat()
         elif len(self) == 1:
             return tag.lit(format_chars(self))
         else:
@@ -131,7 +131,7 @@ class AnyChar:
         return '.'
 
     def __xml__(self):
-        return tag.chars('.')
+        return tag.pat('.')
 
     def __iter__(self):
         for i in range(sys.maxunicode + 1):

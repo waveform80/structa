@@ -1,8 +1,10 @@
 from unittest import mock
 
 import pytest
+from lxml.etree import tostring
 
 from structa.chars import *
+from structa.xml import xml
 
 
 def test_char_class_init():
@@ -23,6 +25,12 @@ def test_char_class_repr():
     assert str(CharClass('')) == '∅'
     assert str(CharClass('f')) == 'f'
     assert str(CharClass('abcd')) == '[a-d]'
+
+
+def test_char_class_xml():
+    assert tostring(xml(CharClass(''))) == b'<pat/>'
+    assert tostring(xml(CharClass('abcd'))) == b'<pat>[a-d]</pat>'
+    assert tostring(xml(CharClass('0123456789'))) == b'<pat>d</pat>'
 
 
 def test_char_class_intersection():
@@ -72,9 +80,22 @@ def test_any_char_init():
         assert CharClass(''.join(chr(i) for i in range(256))) is any_char
 
 
+def test_any_char_hash():
+    with mock.patch('sys.maxunicode', 255):
+        all_chars = CharClass(''.join(chr(i) for i in range(256)))
+        d = {AnyChar(): 'foo'}
+        d[all_chars] = 'bar'
+        assert len(d) == 1
+        assert d[AnyChar()] == 'bar'
+
+
 def test_any_char_repr():
     assert repr(AnyChar()) == 'AnyChar()'
     assert str(AnyChar()) == '.'
+
+
+def test_any_char_xml():
+    assert tostring(xml(AnyChar())) == b'<pat>.</pat>'
 
 
 def test_any_char_iter():
