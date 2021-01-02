@@ -185,30 +185,33 @@ def get_config(args):
 
 
 def _structure_thread(config, analyzer, messages, results):
-    data = sources_list()
-    messages.put(0)
-    for num, file in enumerate(config.file, start=1):
-        messages.put('Reading file {file.name}'.format(file=file))
-        source = MySource.from_config(config, file)
-        if config.encoding == 'auto':
-            messages.put('Guessed encoding {source.encoding}'.format(
-                source=source))
-        if config.format == 'auto':
-            messages.put('Guessed format {source.format}'.format(
-                source=source))
-        messages.put('Parsing data')
-        data.append(source.data)
-        messages.put(num / len(config.file))
-    messages.put(0)
-    messages.put('Measuring data')
-    progress = analyzer.measure(data)
-    messages.put(0)
-    messages.put('Analyzing data')
-    struct = analyzer.analyze(data, progress)
-    messages.put(0)
-    messages.put('Merging common structures')
-    struct = analyzer.merge(struct, progress)
-    results.put(struct)
+    try:
+        data = sources_list()
+        messages.put(0)
+        for num, file in enumerate(config.file, start=1):
+            messages.put('Reading file {file.name}'.format(file=file))
+            source = MySource.from_config(config, file)
+            if config.encoding == 'auto':
+                messages.put('Guessed encoding {source.encoding}'.format(
+                    source=source))
+            if config.format == 'auto':
+                messages.put('Guessed format {source.format}'.format(
+                    source=source))
+            messages.put('Parsing data')
+            data.append(source.data)
+            messages.put(num / len(config.file))
+        messages.put(0)
+        messages.put('Measuring data')
+        progress = analyzer.measure(data)
+        messages.put(0)
+        messages.put('Analyzing data')
+        struct = analyzer.analyze(data, progress)
+        messages.put(0)
+        messages.put('Merging common structures')
+        struct = analyzer.merge(struct, progress)
+        results.put(struct)
+    except Exception as exc:
+        results.put(exc)
 
 
 def get_structure(config):
@@ -246,8 +249,11 @@ def get_structure(config):
         while not messages.empty():
             handle_progress()
         struct = results.get(timeout=1)
-    assert isinstance(struct, SourcesList)
-    return struct.content[0]
+    if isinstance(struct, Exception):
+        raise struct
+    else:
+        assert isinstance(struct, SourcesList)
+        return struct.content[0]
 
 
 def print_structure(config, structure):
