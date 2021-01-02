@@ -100,4 +100,4 @@ def format_sample(value):
             str:      lambda: '"{}"'.format(value.replace('"', '""')),
         }[type(value)]()
     except KeyError:
-        raise ValueError('invalid type for value {:!r}'.format(value))
+        raise ValueError('invalid type for value {!r}'.format(value))
