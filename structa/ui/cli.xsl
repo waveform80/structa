@@ -25,7 +25,7 @@
 
 <template name="sep">
     <value-of select="$normal-style" />
-    <if test="not(position()=last())">, </if>
+    <if test="not(position()=last())">,</if>
 </template>
 
 <template name="unique">
