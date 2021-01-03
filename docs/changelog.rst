@@ -5,7 +5,7 @@ Changelog
 .. currentmodule:: structa
 
 
-Release 0.2 (2020-12-??)
+Release 0.2 (2021-01-??)
 ========================
 
 * Better tuple analysis (`#4`_) which was a pre-requisite for...
