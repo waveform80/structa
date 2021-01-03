@@ -30,7 +30,7 @@ class Progress:
                         (1 - self._position) * (datetime.now() - self._started)
                         / self._position))
             if self._show_percent:
-                pct = ' {p:4.1f}% '.format(p=self._position * 100)
+                pct = ' {p:5.1f}% '.format(p=self._position * 100)
             if self._show_spinner:
                 self._last_spinner = {
                     '|': '/',
