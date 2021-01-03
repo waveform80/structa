@@ -105,10 +105,7 @@ class ElementFactory:
         This method should be overridden to customize the representation of
         types (such as :class:`int`, :class:`~datetime.datetime` and so on).
         """
-        if isinstance(content, str):
-            return content
-        else:
-            return str(content)
+        return str(content)
 
     def _append(self, node, contents):
         """
@@ -129,7 +126,6 @@ class ElementFactory:
                     else:
                         last.tail += contents
         elif et.iselement(contents):
-            contents.tail = ''
             node.append(contents)
         else:
             try:
