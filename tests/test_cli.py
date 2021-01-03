@@ -43,6 +43,13 @@ def test_num():
     assert isinstance(cli.num('1e0'), float)
 
 
+def test_size():
+    assert cli.size('1') == 1
+    assert cli.size(' 100 ') == 100
+    assert cli.size('2K') == 2048
+    assert cli.size('1M') == 1048576
+
+
 def test_main(tmpdir, capsys):
     data = list(range(100))
     filename = str(tmpdir.join('foo.json'))
