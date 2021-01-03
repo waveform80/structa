@@ -7,6 +7,7 @@ from fractions import Fraction
 
 from blessings import Terminal
 from tqdm import tqdm
+from pkg_resources import require
 
 from ..analyzer import Analyzer, ValidationWarning
 from ..conversions import parse_duration_or_timestamp
@@ -49,6 +50,8 @@ RANGE_CONFIGS = {
 
 def get_config(args):
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--version', action='version', version=require('structa')[0].version)
     parser.add_argument(
         'file', nargs='*', type=file, default=[sys.stdin.buffer],
         help="The data-file(s) to analyze; if this is - or unspecified then "
