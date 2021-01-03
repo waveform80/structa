@@ -32,30 +32,27 @@ def test_flatten():
 
 
 def test_analyze_progress():
-    a = Analyzer(bad_threshold=0, track_progress=True)
+    a = Analyzer(bad_threshold=0)
     assert a.progress is None
-    a._top_ids = set(range(1000))
-    a._top_ids_card = 1000
+    a._steps = 1000
+    a._steps_done = 0
     assert a.progress == 0
-    a._top_ids -= set(range(500))
-    assert a.progress == Fraction(1, 10)
-    a._top_ids = set()
-    assert a.progress == Fraction(2, 10)
-    a._all_ids = set(range(1000))
-    a._all_ids_card = 1000
-    assert a.progress == Fraction(2, 10)
-    a._all_ids -= set(range(500))
-    assert a.progress == Fraction(6, 10)
-    a._all_ids = set()
+    a._steps_done = 250
+    assert a.progress == Fraction(250, 1000)
+    a._steps_done = 1000
+    assert a.progress == 1
+    a._steps_done = 1020
     assert a.progress == 1
 
 
 def test_analyze_real_progress():
-    a = Analyzer(bad_threshold=0, track_progress=True)
+    a = Analyzer(bad_threshold=0)
     assert a.progress is None
-    a.analyze(1)
+    data = 1
+    a.analyze(data, a.measure(data))
     assert a.progress == 1
-    a.analyze(list(range(1000)))
+    data = list(range(1000))
+    a.analyze(data, a.measure(data))
     assert a.progress == 1
 
 
@@ -556,8 +553,8 @@ def test_analyze_merge():
         }
         for release in releases
     }
-    print(Analyzer().analyze(data))
-    assert Analyzer().analyze(data) == Dict(
+    a = Analyzer()
+    assert a.merge(a.analyze(data)) == Dict(
         sample=[data],
         content=[
             DictField(
