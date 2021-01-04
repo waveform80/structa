@@ -21,6 +21,7 @@ from .chars import (
 from .types import (
     Stats,
     Container,
+    Scalar,
     Bool,
     Field,
     Fields,
@@ -246,12 +247,10 @@ class Analyzer:
                     for item in path.content
                 ])
         else:
-            # XXX Doesn't work with Field, NumRepr, StrpRepr ... basically there's
-            # lots of things with no .values
             if self._steps:
                 if isinstance(path, Field):
                     self._steps_done += path.count
-                else:
+                elif isinstance(path, Scalar):
                     self._steps_done += path.values.card
             return path
 
