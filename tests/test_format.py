@@ -49,8 +49,9 @@ def test_format_sample():
     assert format_sample(10000000.0) == '1e+07'
     assert format_sample(True) == 'true'
     assert format_sample(False) == 'false'
+    assert format_sample(None) == 'null'
     assert format_sample('foo') == '"foo"'
     assert format_sample('"foo"') == '"""foo"""'
     assert format_sample(dt.datetime(2000, 1, 1)) == '2000-01-01 00:00:00'
     with pytest.raises(ValueError):
-        format_sample(None)
+        format_sample([])

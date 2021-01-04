@@ -93,11 +93,12 @@ def format_repr(self, **override):
 def format_sample(value):
     try:
         return {
-            datetime: lambda: '{0:%Y-%m-%d %H:%M:%S}'.format(value),
-            float:    lambda: '{0:.7g}'.format(value),
-            int:      lambda: format_int(value),
-            bool:     lambda: ('false', 'true')[value],
-            str:      lambda: '"{}"'.format(value.replace('"', '""')),
+            datetime:   lambda: '{0:%Y-%m-%d %H:%M:%S}'.format(value),
+            float:      lambda: '{0:.7g}'.format(value),
+            int:        lambda: format_int(value),
+            bool:       lambda: ('false', 'true')[value],
+            str:        lambda: '"{}"'.format(value.replace('"', '""')),
+            type(None): lambda: 'null',
         }[type(value)]()
     except KeyError:
         raise ValueError('invalid type for value {!r}'.format(value))
