@@ -312,10 +312,6 @@
     <value-of select="max" />
 </template>
 
-<template match="sample">
-    <apply-templates />
-</template>
-
 <template match="pat">
     <value-of select="$pattern-style" />
     <apply-templates />
@@ -331,7 +327,11 @@
     <apply-templates />
 </template>
 
-<template match="value">
+<template match="sample">
+    <apply-templates />
+</template>
+
+<template match="sample/value">
     <value-of select="$normal-style" />
     <value-of select="text()" />
     <if test="$show-count">
@@ -343,7 +343,7 @@
     <call-template name="sep" />
 </template>
 
-<template match="more">
+<template match="sample/more">
     <value-of select="$ellipsis" />
     <text> </text>
 </template>
