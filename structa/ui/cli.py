@@ -206,10 +206,17 @@ def _structure_thread(config, analyzer, messages, results):
         messages.put(0)
         messages.put('Analyzing data')
         struct = analyzer.analyze(data, progress)
-        messages.put(0)
-        messages.put('Merging common structures')
-        struct = analyzer.merge(struct, progress)
-        results.put(struct)
+        n = 0
+        while True:
+            n += 1
+            messages.put(0)
+            messages.put('Merging common structures (pass {})'.format(n))
+            result = analyzer.merge(struct, progress)
+            if result == struct:
+                results.put(result)
+                break
+            else:
+                struct = result
     except Exception as exc:
         results.put(exc)
 
