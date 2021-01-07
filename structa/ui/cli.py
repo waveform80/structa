@@ -23,6 +23,9 @@ def main(args=None):
         config = get_config(args)
         structure = get_structure(config)
         print_structure(config, structure)
+    except KeyboardInterrupt as e:
+        print("Interrupted", file=sys.stderr)
+        return 2
     except Exception as e:
         debug = int(os.environ.get('DEBUG', '0'))
         if not debug:
@@ -235,7 +238,7 @@ def get_structure(config):
 
         def handle_progress():
             try:
-                msg = messages.get(timeout=0.25)
+                msg = messages.get(timeout=0.5)
             except Empty:
                 pass
             else:
