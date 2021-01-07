@@ -151,7 +151,7 @@ class Analyzer:
             # The top-level item is not iterable ... this is going to be
             # quick :)
             top = {id(data)}
-        if self._progress:
+        if self._progress is not None:
             self._progress.reset(total=len(top))
         start = datetime.now()
         count = 0
@@ -162,17 +162,17 @@ class Analyzer:
             except KeyError:
                 pass
             else:
-                if self._progress:
-                    self._progress.update(len(top))
-        self._steps = count
+                if self._progress is not None:
+                    self._progress.update()
+        self._progress.reset(total=count)
 
     def analyze(self, data):
         """
         Given some value *data* (typically an iterable or mapping), return a
         description of its structure.
         """
-        if self._progress:
-            self._progress.reset(total=self._steps)
+        if self._progress is not None:
+            self._progress.reset()
         return self._analyze(data, ())
 
     def merge(self, struct):
@@ -180,8 +180,8 @@ class Analyzer:
         Given some *struct* (as returned by :meth:`analyze`), merge common
         sub-structures within it, returning the top level structure.
         """
-        if self._progress:
-            self._progress.reset(total=self._steps)
+        if self._progress is not None:
+            self._progress.reset()
         return self._merge(struct)
 
     def _merge(self, path):
@@ -192,8 +192,8 @@ class Analyzer:
         which maps to the singular structure.
         """
         if isinstance(path, Container):
-            if self._steps:
-                self._steps_done += path.lengths.card
+            if self._progress is not None:
+                self._progress.update(path.lengths.card)
             if isinstance(path, Dict):
                 # Only Dicts containing containers are merged; Dicts (directly)
                 # containing scalars, and Tuples are left alone as containers
@@ -230,11 +230,11 @@ class Analyzer:
                     for item in path.content
                 ])
         else:
-            if self._steps:
+            if self._progress is not None:
                 if isinstance(path, Field):
-                    self._steps_done += path.count
+                    self._progress.update(path.count)
                 elif isinstance(path, Scalar):
-                    self._steps_done += path.values.card
+                    self._progress.update(path.values.card)
             return path
 
     def _analyze(self, it, path, *, threshold=None, card=1):
@@ -316,8 +316,8 @@ class Analyzer:
         by *path*, a sequence of pattern-matching objects.
         """
         if not path:
-            if self._steps:
-                self._steps_done += 1
+            if self._progress is not None:
+                self._progress.update()
             yield it
         else:
             head, *tail = path
@@ -361,9 +361,9 @@ class Analyzer:
                             .format(key=key, head=head)))
         else:
             # keys
-            if self._steps:
+            if self._progress is not None:
                 for item in it:
-                    self._steps_done += 1
+                    self._progress.update()
                     yield item
             else:
                 yield from it

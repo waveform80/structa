@@ -4,17 +4,15 @@ import argparse
 import warnings
 from datetime import datetime, timedelta
 from fractions import Fraction
-from threading import Thread
-from queue import Queue, Empty
 
 from blessings import Terminal
+from tqdm import tqdm
 
 from ..analyzer import Analyzer, ValidationWarning
 from ..conversions import parse_duration_or_timestamp
 from ..types import sources_list, SourcesList
 from ..source import Source
 from ..xml import xml, get_transform
-from .progress import Progress
 
 
 def main(args=None):
@@ -187,83 +185,40 @@ def get_config(args):
     return parser.parse_args(args)
 
 
-def _structure_thread(config, analyzer, messages, results):
-    try:
+def get_structure(config):
+    bar_format='{desc} {percentage:4.1f}%  {elapsed} [{bar}] {remaining}'
+    with tqdm(config.file, leave=False, bar_format=bar_format, maxinterval=1) as progress:
         data = sources_list()
-        messages.put(0)
-        for num, file in enumerate(config.file, start=1):
-            messages.put('Reading file {file.name}'.format(file=file))
+        for file in progress:
+            progress.set_description(
+                'Reading file {file.name}'.format(file=file))
             source = MySource.from_config(config, file)
             if config.encoding == 'auto':
-                messages.put('Guessed encoding {source.encoding}'.format(
-                    source=source))
+                progress.set_description(
+                    'Guessed encoding {source.encoding}'.format(source=source))
             if config.format == 'auto':
-                messages.put('Guessed format {source.format}'.format(
-                    source=source))
-            messages.put('Parsing data')
+                progress.set_description(
+                    'Guessed format {source.format}'.format(source=source))
+            progress.set_description('Parsing data')
             data.append(source.data)
-            messages.put(num / len(config.file))
-        messages.put(0)
-        messages.put('Measuring data')
-        progress = analyzer.measure(data)
-        messages.put(0)
-        messages.put('Analyzing data')
-        struct = analyzer.analyze(data, progress)
+    with tqdm(leave=False, bar_format=bar_format, smoothing=0, maxinterval=1) as progress:
+        analyzer = MyAnalyzer.from_config(config, progress)
+        progress.set_description('Measuring data')
+        analyzer.measure(data)
+        progress.set_description('Analyzing data')
+        struct = analyzer.analyze(data)
         n = 0
         while True:
             n += 1
-            messages.put(0)
-            messages.put('Merging common structures (pass {})'.format(n))
-            result = analyzer.merge(struct, progress)
+            progress.set_description(
+                'Merging common structures (pass {})'.format(n))
+            result = analyzer.merge(struct)
             if result == struct:
-                results.put(result)
                 break
             else:
                 struct = result
-    except Exception as exc:
-        results.put(exc)
-
-
-def get_structure(config):
-    with Progress() as progress:
-        struct = None
-        messages = Queue()
-        results = Queue()
-        analyzer = MyAnalyzer.from_config(config)
-        thread = Thread(
-            target=_structure_thread,
-            args=(config, analyzer, messages, results),
-            daemon=True)
-        thread.start()
-
-        def handle_progress():
-            try:
-                msg = messages.get(timeout=0.5)
-            except Empty:
-                pass
-            else:
-                if isinstance(msg, str):
-                    progress.message(msg)
-                elif isinstance(msg, (int, float)):
-                    if msg == 0:
-                        progress.reset_eta()
-                    progress.position = msg
-
-        while True:
-            handle_progress()
-            if analyzer.progress is not None:
-                progress.position = analyzer.progress
-            thread.join(0)
-            if not thread.is_alive():
-                break
-        while not messages.empty():
-            handle_progress()
-        struct = results.get(timeout=1)
-    if isinstance(struct, Exception):
-        raise struct
-    else:
-        assert isinstance(struct, SourcesList)
-        return struct.content[0]
+    assert isinstance(struct, SourcesList)
+    return struct.content[0]
 
 
 def print_structure(config, structure):
@@ -309,7 +264,7 @@ def print_structure(config, structure):
 
 class MyAnalyzer(Analyzer):
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, config, progress):
         return cls(
             bad_threshold=config.bad_threshold,
             empty_threshold=config.empty_threshold,
@@ -317,7 +272,8 @@ class MyAnalyzer(Analyzer):
             max_numeric_len=config.max_numeric_len,
             strip_whitespace=config.strip_whitespace,
             min_timestamp=config.min_timestamp,
-            max_timestamp=config.max_timestamp)
+            max_timestamp=config.max_timestamp,
+            progress=progress)
 
 
 class MySource(Source):

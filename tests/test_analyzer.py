@@ -3,6 +3,7 @@ import hashlib
 import datetime as dt
 from itertools import count
 from fractions import Fraction
+from unittest import mock
 
 import pytest
 
@@ -32,28 +33,16 @@ def test_flatten():
 
 
 def test_analyze_progress():
-    a = Analyzer(bad_threshold=0)
-    assert a.progress is None
-    a._steps = 1000
-    a._steps_done = 0
-    assert a.progress == 0
-    a._steps_done = 250
-    assert a.progress == Fraction(250, 1000)
-    a._steps_done = 1000
-    assert a.progress == 1
-    a._steps_done = 1020
-    assert a.progress == 1
-
-
-def test_analyze_real_progress():
-    a = Analyzer(bad_threshold=0)
-    assert a.progress is None
-    data = 1
-    a.analyze(data, a.measure(data))
-    assert a.progress == 1
+    progress = mock.Mock()
+    a = Analyzer(bad_threshold=0, progress=progress)
     data = list(range(1000))
-    a.analyze(data, a.measure(data))
-    assert a.progress == 1
+    a.measure(data)
+    assert progress.reset.call_args == mock.call(total=1001)
+    assert progress.update.called
+    progress.reset_mock()
+    a.analyze(data)
+    assert progress.reset.call_args == mock.call()
+    assert progress.update.called
 
 
 def test_analyze_list():
