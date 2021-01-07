@@ -5,64 +5,89 @@ import humanize
 from blessings import Terminal
 
 
+class FakeTerm:
+    def __getattr__(self, key):
+        return ''
+
+
+class ProgressBar:
+    def __init__(self):
+        self.pos = 0
+        self.size = 0
+
+    def __format__(self, spec=''):
+        if not spec:
+            spec = '#.'
+        return '{bar:{fill}<{size}}'.format(
+            bar=spec[:1] * int(self.pos * self.size), fill=spec[-1:],
+            size=self.size)
+
+
+class ProgressSpin:
+    def __init__(self):
+        self.pos = 0
+        self.inc = 1
+
+    def __format__(self, spec=''):
+        if not spec:
+            spec = '|/-\\'
+        self.pos += self.inc
+        return spec[self.pos % len(spec)]
+
+
 class Progress:
-    def __init__(self, stream=sys.__stderr__, show_bar=True, show_percent=True,
-                 show_eta=True, show_spinner=False):
-        self.term = Terminal(stream=stream)
-        self._show_bar = show_bar and self.term.is_a_tty
-        self._show_percent = show_percent
-        self._show_eta = show_eta
-        self._show_spinner = show_spinner and self.term.is_a_tty
+    def __init__(self, stream=sys.__stderr__,
+                 format='{term.black_on_green}{pct:5.1f}% {eta}'
+                 '{term.normal} {term.cyan}{bar:█ }{term.normal}',
+                 force_styling=False):
+        self.term = Terminal(stream=stream, force_styling=force_styling)
+        self._bar = ProgressBar()
+        self._spin = ProgressSpin()
+        self._format = format
         self._started = None
+        self._message = ''
         self._position = 0.0
         self._last_spinner = '-'
 
     def hide(self):
-        if self.term.is_a_tty:
-            self.term.stream.write(self.term.clear_bol + self.term.move_x(0))
+        self.term.stream.write(self.term.move_x(0) + self.term.clear_eol)
+        if self._message:
+            self.term.stream.write(self.term.move_up + self.term.clear_eol)
+            self._message = ''
 
-    def show(self):
-        if self.term.is_a_tty:
-            eta = pct = bar = spin = ''
-            if self._show_eta and self._started is not None and self._position > 0.1:
+    def show(self, msg=None):
+        if msg is not None:
+            self.hide()
+            if msg:
+                self.term.stream.write(msg + '\n')
+                self._message = msg
+        else:
+            self.term.stream.write(self.term.clear_bol + self.term.move_x(0))
+        if self.term.does_styling:
+            eta = ''
+            if self._started is not None and self._position > 0.1:
                 eta = ' {eta} remaining '.format(
                     eta=humanize.naturaldelta(
                         (1 - self._position) * (datetime.now() - self._started)
                         / self._position))
-            if self._show_percent:
-                pct = ' {p:5.1f}% '.format(p=self._position * 100)
-            if self._show_spinner:
-                self._last_spinner = {
-                    '|': '/',
-                    '/': '-',
-                    '-': '\\',
-                    '\\': '|',
-                }[self._last_spinner]
-                spin = ' ' + self._last_spinner
-            if self._show_bar:
-                size = self.term.width - len(pct) - len(eta) - len(spin) - 3
-                bar = '[{bar:.<{size}}]'.format(
-                    size=size, bar='#' * int(size * self._position))
-            self.term.stream.write(self.term.move_x(0))
-            self.term.stream.write(self.term.black_on_green)
-            self.term.stream.write(pct)
-            self.term.stream.write(eta)
-            self.term.stream.write(self.term.normal)
-            self.term.stream.write(bar)
-            self.term.stream.write(spin)
-            self.term.stream.flush()
+            self._bar.size = 0
+            self._spin.inc = 0
+            sample = self._format.format(
+                term=FakeTerm(), eta=eta, spin=self._spin, bar=self._bar,
+                pct=100 * self._position)
+            self._bar.size = self.term.width - len(sample) - 1
+            self._bar.pos = self._position
+            self._spin.inc = 1
+            self.term.stream.write(self._format.format(
+                term=self.term, eta=eta, spin=self._spin, bar=self._bar,
+                pct=100 * self._position))
+        self.term.stream.flush()
 
     def message(self, msg):
         """
         Output the message *s* to the output stream.
         """
-        self.hide()
-        if self.term.stream:
-            self.term.stream.write(msg)
-            self.term.stream.write('\n')
-            if not self.term.is_a_tty:
-                self.term.stream.flush()
-        self.show()
+        self.show(msg)
 
     def reset_eta(self):
         """

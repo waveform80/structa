@@ -16,7 +16,7 @@ def output(request):
 def term(request, output):
     with mock.patch('structa.ui.progress.Terminal') as term:
         term().stream = output
-        term().is_a_tty = True
+        term().does_styling = True
         term().clear_bol = 'C'
         term().move_x.side_effect = lambda x: 'X%d' % x
         term().width = 40

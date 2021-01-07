@@ -108,7 +108,7 @@ class Analyzer:
     def __init__(self, *, bad_threshold=Fraction(2, 100),
                  empty_threshold=Fraction(98, 100), field_threshold=20,
                  max_numeric_len=30, strip_whitespace=False,
-                 min_timestamp=None, max_timestamp=None):
+                 min_timestamp=None, max_timestamp=None, progress=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.field_threshold = field_threshold
@@ -121,8 +121,9 @@ class Analyzer:
             max_timestamp = now + relativedelta(years=10)
         self.min_timestamp = min_timestamp.timestamp()
         self.max_timestamp = max_timestamp.timestamp()
-        self._steps = 0
+        self._progress = progress
         self._steps_done = 0
+        self._steps = 0
 
     def measure(self, data):
         """
@@ -141,7 +142,6 @@ class Analyzer:
         # For the purposes of providing some progress reporting during
         # measurement of all the ids in *it*, we take the ids of all top
         # level items in *it*
-        self._steps_done = 0
         try:
             if isinstance(data, sources_list):
                 top = {id(item) for source in data for item in source}
@@ -151,7 +151,8 @@ class Analyzer:
             # The top-level item is not iterable ... this is going to be
             # quick :)
             top = {id(data)}
-        self._steps = len(top)
+        if self._progress:
+            self._progress.reset(total=len(top))
         start = datetime.now()
         count = 0
         for item in flatten(data):
@@ -161,45 +162,27 @@ class Analyzer:
             except KeyError:
                 pass
             else:
-                self._steps_done = self._steps - len(top)
-        return count
+                if self._progress:
+                    self._progress.update(len(top))
+        self._steps = count
 
-    def analyze(self, data, progress=None):
+    def analyze(self, data):
         """
         Given some value *data* (typically an iterable or mapping), return a
         description of its structure.
         """
-        if progress is None:
-            self._steps = 0
-        else:
-            assert isinstance(progress, int)
-            self._steps_done = 0
-            self._steps = progress
+        if self._progress:
+            self._progress.reset(total=self._steps)
         return self._analyze(data, ())
 
-    def merge(self, struct, progress=None):
+    def merge(self, struct):
         """
         Given some *struct* (as returned by :meth:`analyze`), merge common
         sub-structures within it, returning the top level structure.
         """
-        if progress is None:
-            self._steps = 0
-        else:
-            assert isinstance(progress, int)
-            self._steps_done = 0
-            self._steps = progress
+        if self._progress:
+            self._progress.reset(total=self._steps)
         return self._merge(struct)
-
-    @property
-    def progress(self):
-        """
-        Tracks the current analysis progress as a :class:`~fractions.Fraction`
-        during the run of :meth:`measure`, :meth:`analyze`, or :meth:`merge`.
-        Note that unless :meth:`measure` is called first, the progress of the
-        latter methods will be reported as :data:`None`.
-        """
-        if self._steps:
-            return max(0, min(1, Fraction(self._steps_done, self._steps)))
 
     def _merge(self, path):
         """
