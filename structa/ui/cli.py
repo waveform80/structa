@@ -50,7 +50,7 @@ RANGE_CONFIGS = {
 def get_config(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        'file', nargs='*', type=argparse.FileType('rb'), default=sys.stdin,
+        'file', nargs='*', type=file, default=[sys.stdin.buffer],
         help="The data-file(s) to analyze; if this is - or unspecified then "
         "stdin will be read for the data; if multiple files are specified "
         "all will be read and analyzed as an array of similar structures")
@@ -325,3 +325,9 @@ def size(s):
         return int(s[:-1]) * (2 ** 10) ** suffixes.index(s[-1:])
     else:
         return int(s)
+
+def file(s):
+    if s == '-':
+        return sys.stdin.buffer
+    else:
+        return open(s, 'rb')
