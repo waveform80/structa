@@ -239,7 +239,11 @@
     <if test="$show-pattern and pattern">
         <value-of select="$suffix-style" />
         <text> pattern=</text>
+        <value-of select="$normal-style" />
+        <text>"</text>
         <apply-templates select="pattern" />
+        <value-of select="$normal-style" />
+        <text>"</text>
     </if>
 </template>
 

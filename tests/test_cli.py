@@ -651,7 +651,7 @@ def test_big_struct(tmpdir, capsys):
                     'description': str,
                     'metavars': {
                         str: {
-                            str of int pattern=d: [ int ]
+                            str of int pattern="d": [ int ]
                         }
                     },
                     'version': str
