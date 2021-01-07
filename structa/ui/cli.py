@@ -87,7 +87,7 @@ def get_config(args):
         "a pattern without preventing the pattern from being reported; the "
         'proportion of "bad" data permitted in a field (default: %(default)s)')
     parser.add_argument(
-        '-E', '--empty-threshold', type=num, metavar='NUM', default='98%',
+        '-E', '--empty-threshold', type=num, metavar='NUM', default='99%',
         help="The proportion of string values permitted to be empty without "
         "preventing the pattern from being reported; the proportion of "
         '"empty" data permitted in a field (default: %(default)s)')

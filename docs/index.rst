@@ -6,7 +6,7 @@ Contents
 .. toctree::
 
     install
-    quickstart
+    tutorial
     api
     changelog
     license
