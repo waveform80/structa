@@ -79,7 +79,7 @@ def get_config(args):
         "instead of being lumped under a generic type like <str> (default: "
         "%(default)s)")
     parser.add_argument(
-        '-B', '--bad-threshold', type=num, metavar='NUM', default='2%',
+        '-B', '--bad-threshold', type=num, metavar='NUM', default='1%',
         help="The proportion of string values which are allowed to mismatch "
         "a pattern without preventing the pattern from being reported; the "
         'proportion of "bad" data permitted in a field (default: %(default)s)')
