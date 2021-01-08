@@ -122,8 +122,6 @@ class Analyzer:
         self.min_timestamp = min_timestamp.timestamp()
         self.max_timestamp = max_timestamp.timestamp()
         self._progress = progress
-        self._steps_done = 0
-        self._steps = 0
 
     def measure(self, data):
         """
