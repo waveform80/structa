@@ -98,19 +98,21 @@ def test_analyze_dict_optional_choices():
 
 
 def test_analyze_dict_invalid_choices():
-    data = [{chr(ord('A') + n): n for n in range(50)}] * 99
+    data = [{chr(ord('A') + n): str(n) for n in range(50)}] * 99
     data.append({'foo': 'bar'})
-    with pytest.warns(ValidationWarning):
-        assert Analyzer(bad_threshold=1/100).analyze(data) == List(
-            sample=[data], content=[Dict(
-                sample=data,
-                content=[
-                    DictField(
-                        Str(Counter(k for d in data[:-1] for k in d), pattern=[any_char]),
-                        Int(Counter(v for d in data[:-1] for v in d.values()))
+    assert Analyzer(bad_threshold=1/100).analyze(data) == List(
+        sample=[data], content=[Dict(
+            sample=data,
+            content=[
+                DictField(
+                    Str(Counter(k for d in data for k in d), pattern=None),
+                    StrRepr(
+                        Int(Counter(int(v) for d in data[:-1] for v in d.values())),
+                        pattern='d'
                     )
-                ]
-            )])
+                )
+            ]
+        )])
 
 
 def test_analyze_dict_of_dicts():

@@ -471,45 +471,25 @@ class Analyzer:
         maximum string length is below :attr:`max_numeric_len`.
         """
         total = sum(items.values())
-        unique = len(items) == total
         if '' in items:
             if items[''] / total > self.empty_threshold:
                 return Str(items)
             del items['']
         bad_threshold = ceil(total * self.bad_threshold)
-        if unique or bad_threshold == 0:
-            sample = items
-        else:
-            min_coverage = total - bad_threshold
-            coverage = 0
-            sample = Counter()
-            for item, count in items.most_common():
-                sample[item] = count
-                coverage += count
-                if coverage >= min_coverage:
-                    # We've excluded potentially bad values based on
-                    # popularity
-                    bad_threshold = 0
-                    break
-                elif count == 1:
-                    # Too many unique values to determine which should be
-                    # ignored by popularity; just use regular bad_threshold
-                    sample = items
-                    break
 
-        lengths = Stats.from_lengths(sample)
+        lengths = Stats.from_lengths(items)
         if lengths.max <= self.max_numeric_len:
-            result = self._match_numeric_str(sample, bad_threshold=bad_threshold)
+            result = self._match_numeric_str(items, bad_threshold=bad_threshold)
             if result is not None:
                 return self._match_possible_datetime(result)
         if lengths.min == lengths.max:
-            return self._match_fixed_len_str(sample, bad_threshold=bad_threshold)
+            return self._match_fixed_len_str(items, bad_threshold=bad_threshold)
         # XXX Add is_base64 (and others?)
-        if all(value.startswith(('http://', 'https://')) for value in sample):
+        if all(value.startswith(('http://', 'https://')) for value in items):
             # XXX Refine this to parse URLs
-            return URL(sample)
+            return URL(items)
         else:
-            return Str(sample)
+            return Str(items)
 
     def _match_fixed_len_str(self, items, *, bad_threshold=0):
         """
