@@ -167,16 +167,11 @@ class Type:
         return tag.type()
 
     def __eq__(self, other):
-        # NOTE: Eventually we expect compare to grow options for tweaking the
-        # comparison; the __eq__ method will simply call compare with defaults
         if isinstance(other, Type):
-            return self.compare(other)
+            return (
+                isinstance(self, other.__class__) or
+                isinstance(other, self.__class__))
         return NotImplemented
-
-    def compare(self, other):
-        return (
-            isinstance(self, other.__class__) or
-            isinstance(other, self.__class__))
 
 
 class Container(Type):
@@ -212,7 +207,7 @@ class Container(Type):
         result.content = content
         return result
 
-    def compare(self, other):
+    def __eq__(self, other):
         # The Stats lengths attribute is ignored as it has no bearing on the
         # actual structure itself
         return (
@@ -263,13 +258,15 @@ class DictField(Type):
         return DictField(self.key + other.key,
                          self.value + other.value)
 
-    def compare(self, other):
-        return (
-            super().compare(other) and
-            self.key.compare(other.key) and
-            self.value is not None and
-            other.value is not None and
-            self.value.compare(other.value))
+    def __eq__(self, other):
+        if isinstance(other, DictField):
+            return (
+                super().__eq__(other) and
+                self.key == other.key and
+                self.value is not None and
+                other.value is not None and
+                self.value == other.value)
+        return NotImplemented
 
 
 class Tuple(Container):
@@ -318,13 +315,15 @@ class TupleField(Type):
         return TupleField(self.index + other.index,
                           self.value + other.value)
 
-    def compare(self, other):
-        return (
-            super().compare(other) and
-            self.index.compare(other.index) and
-            self.value is not None and
-            other.value is not None and
-            self.value.compare(other.value))
+    def __eq__(self, other):
+        if isinstance(other, TupleField):
+            return (
+                super().__eq__(other) and
+                self.index == other.index and
+                self.value is not None and
+                other.value is not None and
+                self.value == other.value)
+        return NotImplemented
 
 
 class List(Container):
@@ -583,10 +582,12 @@ class Repr(Type):
     def with_content(self, content):
         return self.__class__(content, self.pattern)
 
-    def compare(self, other):
+    def __eq__(self, other):
         # XXX Should we compare pattern here? Consider case of mistaken octal/
         # dec pattern when it's actually hex in the merge scenario?
-        return super().compare(other) and self.content.compare(other.content)
+        if isinstance(other, Repr):
+            return super().__eq__(other) and self.content == other.content
+        return NotImplemented
 
     @property
     def values(self):
@@ -624,23 +625,25 @@ class StrRepr(Repr):
             return parent.__class__(child.content + parent.content, pattern)
         return NotImplemented
 
-    def compare(self, other):
-        if super().compare(other):
-            if isinstance(self.content, other.content.__class__):
-                child, parent = self, other
-            else:
-                child, parent = other, self
-            return {
-                (Bool,     Bool):     lambda: child.pattern == parent.pattern,
-                (Bool,     Int):      lambda: child.pattern == '0|1',
-                (Bool,     Float):    lambda: child.pattern == '0|1',
-                (Int,      Int):      lambda: True,
-                (Int,      Float):    lambda: child.pattern != 'x',
-                (Float,    Float):    lambda: True,
-                (DateTime, DateTime): lambda: child.pattern == parent.pattern,
-                (NumRepr,  NumRepr):  lambda: True,
-            }[child.content.__class__, parent.content.__class__]()
-        return False
+    def __eq__(self, other):
+        if not isinstance(other, StrRepr):
+            return NotImplemented
+        if not super().__eq__(other):
+            return False
+        if isinstance(self.content, other.content.__class__):
+            child, parent = self, other
+        else:
+            child, parent = other, self
+        return {
+            (Bool,     Bool):     lambda: child.pattern == parent.pattern,
+            (Bool,     Int):      lambda: child.pattern == '0|1',
+            (Bool,     Float):    lambda: child.pattern == '0|1',
+            (Int,      Int):      lambda: True,
+            (Int,      Float):    lambda: child.pattern != 'x',
+            (Float,    Float):    lambda: True,
+            (DateTime, DateTime): lambda: child.pattern == parent.pattern,
+            (NumRepr,  NumRepr):  lambda: True,
+        }[child.content.__class__, parent.content.__class__]()
 
     def validate(self, value):
         if not isinstance(value, str):
@@ -780,6 +783,15 @@ class Field(Type):
                          self.optional or other.optional)
         return NotImplemented
 
+    def __eq__(self, other):
+        # We deliberately exclude *optional* from consideration here; the
+        # only time a Field is compared is during common sub-tree
+        # elimination where a key might be mandatory in one sub-set but
+        # optional in another
+        if isinstance(other, Field):
+            return super().__eq__(other) and self.value == other.value
+        return NotImplemented
+
     def __lt__(self, other):
         if isinstance(other, Field):
             return self.value < other.value
@@ -791,13 +803,6 @@ class Field(Type):
         # Only the value is used for the hash, as only the value is compared
         # for equality (and things that compare equal must have equal hashes)
         return hash((self.value,))
-
-    def compare(self, other):
-        # We deliberately exclude *optional* from consideration here; the
-        # only time a Field is compared is during common sub-tree
-        # elimination where a key might be mandatory in one sub-set but
-        # optional in another
-        return super().compare(other) and self.value == other.value
 
     def validate(self, value):
         return value == self.value
@@ -812,6 +817,16 @@ class Value(Type):
             return _value
         except NameError:
             return super().__new__(cls)
+
+    def __eq__(self, other):
+        if isinstance(other, Type):
+            return True
+        return NotImplemented
+
+    def __add__(self, other):
+        if isinstance(other, Type):
+            return self
+        return NotImplemented
 
     def __repr__(self):
         return 'Value()'
@@ -835,6 +850,16 @@ class Empty(Type):
             return _empty
         except NameError:
             return super().__new__(cls)
+
+    def __eq__(self, other):
+        if isinstance(other, Type):
+            return True
+        return NotImplemented
+
+    def __add__(self, other):
+        if isinstance(other, Type):
+            return other
+        return NotImplemented
 
     def __repr__(self):
         return 'Empty()'

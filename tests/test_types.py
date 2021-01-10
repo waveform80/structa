@@ -114,6 +114,12 @@ def test_dict_with_long_pattern():
         pattern + 100
 
 
+def test_dictfield_equality():
+    d = DictField(Field('foo', 3), Int(Counter((1, 2, 3))))
+    assert d == d
+    assert not d == 'foo'
+
+
 def test_tuple():
     data = [
         (),
@@ -195,6 +201,12 @@ def test_tuple_with_long_pattern():
         "])])"
     )
     assert pattern + pattern == pattern
+
+
+def test_tuplefield_equality():
+    t = TupleField(Field(0, 3), Int(Counter((1, 2, 3))))
+    assert t == t
+    assert not t == 'foo'
 
 
 def test_list():
@@ -311,6 +323,8 @@ def test_str_repr():
     assert not pattern.validate(1)
     assert not pattern.validate('a')
     assert pattern.values.unique
+    pattern2 = StrRepr(DateTime(Counter((dt.datetime.now(),))), pattern='%Y-%m-%dT%H:%M:%S')
+    assert pattern != pattern2
 
 
 def test_num_repr():
@@ -514,6 +528,7 @@ def test_fields():
         f2 + f3
     with pytest.raises(TypeError):
         f2 > 'abc'
+    assert f1 != 1
 
 
 def test_value():
@@ -525,7 +540,11 @@ def test_value():
     assert pattern.validate(1)
     assert pattern.validate('foo')
     assert Value() == Value()
-    assert Value() != Empty()
+    assert Value() == Empty()
+    assert Value() != 'foo'
+    assert Value() + Empty() == Value()
+    with pytest.raises(TypeError):
+        Value() + 1
 
 
 def test_empty():
@@ -537,4 +556,8 @@ def test_empty():
     assert not pattern.validate(1)
     assert not pattern.validate('foo')
     assert Empty() == Empty()
-    assert Empty() != Value()
+    assert Empty() == Value()
+    assert Empty() != 'foo'
+    assert Empty() + Value() == Value()
+    with pytest.raises(TypeError):
+        Empty() + 1
