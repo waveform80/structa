@@ -110,6 +110,8 @@ def test_dict_with_long_pattern():
         "DictField(key=Field(value='label', count=4, optional=False), value=Str(pattern=None, values=...)), "
         "DictField(key=Field(value='num', count=4, optional=False), value=Int(values=...))])")
     assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Int(Counter((1, 2, 3)))
     with pytest.raises(TypeError):
         pattern + 100
 
@@ -201,6 +203,8 @@ def test_tuple_with_long_pattern():
         "])])"
     )
     assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Int(Counter((1, 2, 3)))
 
 
 def test_tuplefield_equality():
@@ -283,6 +287,9 @@ def test_list_with_long_pattern():
     assert iselement(xml(pattern).find('content/dict'))
     assert iselement(xml(pattern).find(
         'content/dict/content/field/str/values/sample/more'))
+    assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Int(Counter((1, 2, 3)))
 
 
 def test_str():
@@ -297,6 +304,8 @@ def test_str():
     assert pattern.validate('blah')
     assert not pattern.validate('')
     assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Int(Counter((1, 2, 3)))
     with pytest.raises(TypeError):
         pattern + 100
 
@@ -323,6 +332,8 @@ def test_str_repr():
     assert not pattern.validate(1)
     assert not pattern.validate('a')
     assert pattern.values.unique
+    assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
     pattern2 = StrRepr(DateTime(Counter((dt.datetime.now(),))), pattern='%Y-%m-%dT%H:%M:%S')
     assert pattern != pattern2
 
@@ -342,6 +353,9 @@ def test_num_repr():
     ))), pattern=Float)
     assert str(pattern) == 'float of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
     assert xml(pattern).tag == 'floatof'
+    assert pattern == pattern + pattern
+    assert pattern + pattern == pattern
+    assert pattern != Int(Counter((1, 2, 3)))
 
 
 def test_int():
@@ -355,6 +369,8 @@ def test_int():
     assert xml(pattern).tag == 'strof'
     assert iselement(xml(pattern).find('int'))
     assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Str(Counter(('a', 'b', 'c')))
     with pytest.raises(TypeError):
         pattern + 100
 
@@ -370,6 +386,8 @@ def test_float():
     assert xml(pattern).tag == 'strof'
     assert iselement(xml(pattern).find('float'))
     assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Str(Counter(('a', 'b', 'c')))
     with pytest.raises(TypeError):
         pattern + 100
 
@@ -391,6 +409,9 @@ def test_datetime():
     assert str(pattern) == 'str of datetime range=1970-01-01 00:00:00..1970-02-01 00:00:00 pattern=%Y-%m-%d %H:%M:%S'
     assert xml(pattern).tag == 'strof'
     assert iselement(xml(pattern).find('datetime'))
+    assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Str(Counter(('a', 'b', 'c')))
 
 
 def test_datetime_numrepr():
@@ -541,6 +562,8 @@ def test_value():
     assert pattern.validate('foo')
     assert Value() == Value()
     assert Value() == Empty()
+    assert Value() == Int(Counter((1, 2, 3)))
+    assert Int(Counter((1, 2, 3))) == Value()
     assert Value() != 'foo'
     assert Value() + Empty() == Value()
     with pytest.raises(TypeError):
@@ -557,6 +580,8 @@ def test_empty():
     assert not pattern.validate('foo')
     assert Empty() == Empty()
     assert Empty() == Value()
+    assert Empty() == Int(Counter((1, 2, 3)))
+    assert Int(Counter((1, 2, 3))) == Empty()
     assert Empty() != 'foo'
     assert Empty() + Value() == Value()
     with pytest.raises(TypeError):

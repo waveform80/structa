@@ -168,9 +168,15 @@ class Type:
 
     def __eq__(self, other):
         if isinstance(other, Type):
-            return (
-                isinstance(self, other.__class__) or
-                isinstance(other, self.__class__))
+            # This rather strange construction is deliberate; we must *not*
+            # return False in the event that the test fails. This permits the
+            # equality machinery to try the version other == self test which,
+            # in the case of the Value and Empty types can match any other
+            # Type
+            if isinstance(self, other.__class__):
+                return True
+            elif isinstance(other, self.__class__):
+                return True
         return NotImplemented
 
 
