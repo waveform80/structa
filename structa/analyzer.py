@@ -268,10 +268,10 @@ class Analyzer:
             card=pattern.lengths.card)
         if isinstance(fields, Fields):
             return pattern.with_content([
-                DictField(choice, self._analyze(
-                    it, path + (pattern, choice),
+                DictField(field, self._analyze(
+                    it, path + (pattern, field),
                     card=pattern.lengths.card))
-                for choice in sorted(fields)
+                for field in sorted(fields)
             ])
         else:
             return pattern.with_content([
@@ -295,10 +295,10 @@ class Analyzer:
             card=pattern.lengths.card)
         if isinstance(fields, Fields):
             return pattern.with_content([
-                TupleField(choice, self._analyze(
-                    it, path + (pattern, choice),
+                TupleField(field, self._analyze(
+                    it, path + (pattern, field),
                     card=pattern.lengths.card))
-                for choice in sorted(fields)
+                for field in sorted(fields)
             ])
         else:
             return pattern.with_content([
