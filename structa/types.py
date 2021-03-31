@@ -4,9 +4,10 @@ from datetime import datetime
 from textwrap import indent, shorten
 from functools import partial, total_ordering
 from collections.abc import Mapping
+from operator import attrgetter
 
 from .collections import Counter, FrozenCounter
-from .conversions import try_conversion, parse_bool
+from .conversions import some, try_conversion, parse_bool
 from .format import format_int, format_repr, format_sample
 from .xml import ElementFactory, xml, merge_siblings
 
@@ -123,8 +124,8 @@ class Stats:
 
     @classmethod
     def from_sample(cls, sample):
-        assert isinstance(sample, (Counter, FrozenCounter)), \
-                '{sample} is not Counter'.format(sample=sample)
+        if not isinstance(sample, (Counter, FrozenCounter)):
+            sample = FrozenCounter(sample)
         assert sample
         keys = sorted(sample)
         card = sum(sample.values())
@@ -166,13 +167,29 @@ class Type:
     def __xml__(self):
         return tag.type()
 
+    def __hash__(self):
+        # Hashes have to be equal for items that compare equal but can be equal
+        # or different for unequal items. We don't have anything else we can
+        # really use here so, just use the type itself.
+        #
+        # Yes, this is horribly inefficient for hashing but we have some rather
+        # complex comparison cases to handle like Value() and Empty() comparing
+        # equal to just about everything, plus hashing isn't terribly important
+        # for most of the analysis (just a minor part of the merge operation at
+        # the end)
+        return hash(Type)
+
     def __eq__(self, other):
         if isinstance(other, Type):
             # This rather strange construction is deliberate; we must *not*
             # return False in the event that the test fails. This permits the
             # equality machinery to try the version other == self test which,
             # in the case of the Value and Empty types can match any other
-            # Type
+            # Type.
+            #
+            # Descendents calling the super-class' implementation should check
+            # for "is True" rather relying upon an implicit truth test as
+            # bool(NotImplemented) is True
             if isinstance(self, other.__class__):
                 return True
             elif isinstance(other, self.__class__):
@@ -181,15 +198,29 @@ class Type:
 
 
 class Container(Type):
-    __slots__ = ('lengths', 'content')
+    __slots__ = ('lengths', 'content', '_similarity_threshold')
 
-    def __init__(self, sample, content=None):
+    def __init__(self, sample, content=None, similarity_threshold=0.5):
         super().__init__()
         self.lengths = Stats.from_lengths(sample)
         self.content = content
+        self._similarity_threshold = similarity_threshold
+
+    @property
+    def similarity_threshold(self):
+        return self._similarity_threshold
+
+    @similarity_threshold.setter
+    def similarity_threshold(self, value):
+        self._similarity_threshold = value
+        for item in self.content:
+            if isinstance(item, (TupleField, DictField)):
+                item = item.value
+            if isinstance(item, Container):
+                item.similarity_threshold = value
 
     def __repr__(self):
-        return format_repr(self, lengths=None)
+        return format_repr(self, lengths=None, _similarity_threshold=None)
 
     def __xml__(self):
         return tag.container(
@@ -198,27 +229,39 @@ class Container(Type):
             tag.lengths(xml(self.lengths)),
         )
 
+    def __eq__(self, other):
+        # The Stats lengths attribute is ignored as it has no bearing on the
+        # actual structure itself
+        if super().__eq__(other) is True:
+            return some(
+                (a == b for a, b in self._zip(other)),
+                min(len(self.content), len(other.content)) *
+                1 - self.similarity_threshold)
+        return NotImplemented
+
     def __add__(self, other):
-        if self == other:
+        # The odd construct of calling self.__eq__(other) instead of testing
+        # self == other is deliberate. It ensures that, in the case we're
+        # comparing with something like Empty / Value (where our equality test
+        # returns NotImplemented), the radd machinery is invoked so when self +
+        # other fails, other + self is called and (for example) Empty.__radd__
+        # is used instead
+        if self.__eq__(other) is True:
             result = copy(self)
             result.lengths = self.lengths + other.lengths
-            result.content = [
-                a + b for a, b in zip(self.content, other.content)
-            ]
+            result.content = [a + b for a, b in self._zip(other)]
             return result
         return NotImplemented
+
+    def _zip(self, other):
+        return zip(self.content, other.content)
 
     def with_content(self, content):
         result = copy(self)
         result.content = content
         return result
 
-    def __eq__(self, other):
-        # The Stats lengths attribute is ignored as it has no bearing on the
-        # actual structure itself
-        return (
-            super().compare(other) and
-            all(a.compare(b) for a, b in zip(self.content, other.content)))
+    __hash__ = Type.__hash__
 
 
 class Dict(Container):
@@ -238,6 +281,17 @@ class Dict(Container):
 
     def __xml__(self):
         return tag.dict(iter(super().__xml__()))
+
+    def __add__(self, other):
+        result = super().__add__(other)
+        if isinstance(result, Dict):
+            # XXX Is this strictly necessary?
+            # FIXME this won't work with all possible keys
+            result.content = sorted(result.content, key=attrgetter('key'))
+        return result
+
+    def _zip(self, other):
+        return zip_dict_fields(self.content, other.content)
 
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
@@ -264,10 +318,12 @@ class DictField(Type):
         return DictField(self.key + other.key,
                          self.value + other.value)
 
+    __hash__ = Type.__hash__
+
     def __eq__(self, other):
         if isinstance(other, DictField):
             return (
-                super().__eq__(other) and
+                super().__eq__(other) is True and
                 self.key == other.key and
                 self.value is not None and
                 other.value is not None and
@@ -292,6 +348,9 @@ class Tuple(Container):
 
     def __xml__(self):
         return tag.tuple(iter(super().__xml__()))
+
+    def _zip(self, other):
+        return zip_tuple_fields(self.content, other.content)
 
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
@@ -321,10 +380,12 @@ class TupleField(Type):
         return TupleField(self.index + other.index,
                           self.value + other.value)
 
+    __hash__ = Type.__hash__
+
     def __eq__(self, other):
         if isinstance(other, TupleField):
             return (
-                super().__eq__(other) and
+                super().__eq__(other) is True and
                 self.index == other.index and
                 self.value is not None and
                 other.value is not None and
@@ -350,6 +411,17 @@ class List(Container):
     def __xml__(self):
         return tag.list(iter(super().__xml__()))
 
+    def __eq__(self, other):
+        # The Stats lengths attribute is ignored as it has no bearing on the
+        # actual structure itself
+        if super().__eq__(other) is True:
+            return some(
+                (a == b for a, b in
+                 zip(self.content, other.content)),
+                min(len(self.content), len(other.content)) *
+                1 - self.similarity_threshold)
+        return NotImplemented
+
     def validate(self, value):
         return isinstance(value, list)
 
@@ -373,7 +445,8 @@ class Scalar(Type):
         return tag.scalar(tag.values(iter(xml(self.values))))
 
     def __add__(self, other):
-        if self == other:
+        # See notes in Container.__add__
+        if self.__eq__(other) is True:
             if issubclass(self.__class__, other.__class__):
                 result = copy(other)
             else:
@@ -592,8 +665,12 @@ class Repr(Type):
         # XXX Should we compare pattern here? Consider case of mistaken octal/
         # dec pattern when it's actually hex in the merge scenario?
         if isinstance(other, Repr):
-            return super().__eq__(other) and self.content == other.content
+            return (
+                super().__eq__(other) is True and
+                self.content == other.content)
         return NotImplemented
+
+    __hash__ = Type.__hash__
 
     @property
     def values(self):
@@ -631,10 +708,12 @@ class StrRepr(Repr):
             return parent.__class__(child.content + parent.content, pattern)
         return NotImplemented
 
+    __hash__ = Repr.__hash__
+
     def __eq__(self, other):
         if not isinstance(other, StrRepr):
             return NotImplemented
-        if not super().__eq__(other):
+        if super().__eq__(other) is not True:
             return False
         if isinstance(self.content, other.content.__class__):
             child, parent = self, other
@@ -767,12 +846,12 @@ class Fields(Type):
         return any(choice.validate(value) for choice in self)
 
 
-@total_ordering
 class Field(Type):
     __slots__ = ('value', 'count', 'optional')
 
     def __init__(self, value, count, optional=False):
         super().__init__()
+        assert not isinstance(value, (Dict, List))
         self.value = value
         self.count = count
         self.optional = optional
@@ -789,26 +868,31 @@ class Field(Type):
                          self.optional or other.optional)
         return NotImplemented
 
+    __hash__ = Type.__hash__
+
     def __eq__(self, other):
         # We deliberately exclude *optional* from consideration here; the
         # only time a Field is compared is during common sub-tree
         # elimination where a key might be mandatory in one sub-set but
         # optional in another
         if isinstance(other, Field):
-            return super().__eq__(other) and self.value == other.value
+            return (
+                super().__eq__(other) is True and
+                self.value == other.value)
         return NotImplemented
 
     def __lt__(self, other):
+        # XXX This is largely a fudge. The only reason it is included is to
+        # permit Dict to sort multiple DictField entries containing Field keys
+        # partly for display purposes, and partly to ease certain comparisons.
+        # Because of this it needs to be able to deal with sorting incompatible
+        # types like str and int. This is done arbitrarily by string coversion.
         if isinstance(other, Field):
-            return self.value < other.value
+            try:
+                return self.value < other.value
+            except TypeError:
+                return str(self.value) < str(other.value)
         return NotImplemented
-
-    def __hash__(self):
-        # We define a hash to permit Field to be present in a Fields
-        # instance; note that this implies a Field is effectively immutable.
-        # Only the value is used for the hash, as only the value is compared
-        # for equality (and things that compare equal must have equal hashes)
-        return hash((self.value,))
 
     def validate(self, value):
         return value == self.value
@@ -824,6 +908,8 @@ class Value(Type):
         except NameError:
             return super().__new__(cls)
 
+    __hash__ = Type.__hash__
+
     def __eq__(self, other):
         if isinstance(other, Type):
             return True
@@ -833,6 +919,8 @@ class Value(Type):
         if isinstance(other, Type):
             return self
         return NotImplemented
+
+    __radd__ = __add__
 
     def __repr__(self):
         return 'Value()'
@@ -857,15 +945,24 @@ class Empty(Type):
         except NameError:
             return super().__new__(cls)
 
+    __hash__ = Type.__hash__
+
     def __eq__(self, other):
         if isinstance(other, Type):
             return True
         return NotImplemented
 
     def __add__(self, other):
+        if isinstance(other, Field):
+            if not other.optional:
+                other = copy(other)
+                other.optional = True
+            return other
         if isinstance(other, Type):
             return other
         return NotImplemented
+
+    __radd__ = __add__
 
     def __repr__(self):
         return 'Empty()'
@@ -882,3 +979,60 @@ class Empty(Type):
 
 _empty = Empty()
 _value = Value()
+
+
+def zip_tuple_fields(it1, it2):
+    # FIXME what about the empty cases?
+    if it1[0].index is not _empty and it2[0].index is not _empty:
+        yield from zip(it1, it2)
+
+
+def zip_dict_fields(it1, it2):
+    if it1[0].key is _empty or it2[0].key is _empty:
+        pass
+    elif it1[0].key is _value:
+        for item in it2:
+            yield it1[0], item
+    elif it2[0].key is _value:
+        for item in it1:
+            yield item, it2[0]
+    else:
+        fields1 = {item.key: item for item in it1}
+        fields2 = {item.key: item for item in it2}
+        all_fields1 = all(isinstance(key, Field) for key in fields1)
+        all_fields2 = all(isinstance(key, Field) for key in fields2)
+        if all_fields1 == all_fields2:
+            for key in fields1.keys() & fields2.keys():
+                yield fields1[key], fields2[key]
+            for key in fields1.keys() - fields2.keys():
+                field2 = DictField(Field(key.value, count=0, optional=True),
+                                   _empty)
+                yield fields1[key], field2
+            for key in fields2.keys() - fields1.keys():
+                field1 = DictField(Field(key.value, count=0, optional=True),
+                                   _empty)
+                yield field1, fields2[key]
+        elif all_fields1:
+            remaining = fields1.copy()
+            for key_type in fields2:
+                for key in fields1:
+                    if key_type.validate(key.value):
+                        yield fields1[key], fields2[key_type]
+                        del remaining[key]
+            for field1 in remaining.values():
+                field2 = DictField(
+                    Field(field1.key.value, count=0, optional=True), _empty)
+                yield field1, field2
+        elif all_fields2:
+            remaining = fields2.copy()
+            for key_type in fields1:
+                for key in fields2:
+                    if key_type.validate(key.value):
+                        yield fields1[key_type], fields2[key]
+                        del remaining[key]
+            for field2 in remaining.values():
+                field1 = DictField(
+                    Field(field2.key.value, count=0, optional=True), _empty)
+                yield field1, field2
+        else:
+            assert False
