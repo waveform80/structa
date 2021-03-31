@@ -959,6 +959,7 @@ class Empty(Type):
                 other.optional = True
             return other
         if isinstance(other, Type):
+            # XXX Handle changing Field.optional to True
             return other
         return NotImplemented
 
