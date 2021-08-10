@@ -6,6 +6,13 @@ from dateutil.relativedelta import relativedelta
 from structa.conversions import *
 
 
+def test_some():
+    data = range(10)
+    assert some(i < 10 for i in data)
+    assert some((i < 8 for i in data), threshold=2)
+    assert not some((i < 8 for i in data), threshold=1)
+
+
 def test_try_conversion():
     data = range(10)
     str_data = Counter(str(n) for n in data)

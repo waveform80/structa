@@ -18,12 +18,11 @@ def some(iterable, threshold=0):
     function will exit early when the count of :data:`False` values exceeds
     *threshold*).
     """
-    threshold = int(threshold)
     if threshold > 0:
         for item in iterable:
             if not item:
                 threshold -= 1
-                if not threshold:
+                if threshold < 0:
                     return False
         return True
     else:

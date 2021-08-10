@@ -29,6 +29,7 @@ def test_char_class_repr():
 
 def test_char_class_xml():
     assert tostring(xml(CharClass(''))) == b'<pat/>'
+    assert tostring(xml(CharClass('a'))) == b'<lit>a</lit>'
     assert tostring(xml(CharClass('abcd'))) == b'<pat>[a-d]</pat>'
     assert tostring(xml(CharClass('0123456789'))) == b'<pat>d</pat>'
 

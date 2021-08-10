@@ -32,6 +32,19 @@ def test_flatten():
     assert list(flatten('abc')) == ['abc']
 
 
+def test_analyze_progress_trivial():
+    progress = mock.Mock()
+    a = Analyzer(bad_threshold=0, progress=progress)
+    data = 10
+    a.measure(data)
+    assert progress.reset.call_args == mock.call(total=1)
+    assert progress.update.called
+    progress.reset_mock()
+    a.analyze(data)
+    assert progress.reset.call_args == mock.call()
+    assert progress.update.called
+
+
 def test_analyze_progress():
     progress = mock.Mock()
     a = Analyzer(bad_threshold=0, progress=progress)
@@ -43,6 +56,26 @@ def test_analyze_progress():
     a.analyze(data)
     assert progress.reset.call_args == mock.call()
     assert progress.update.called
+
+
+def test_analyze_progress_dict():
+    progress = mock.Mock()
+    a = Analyzer(bad_threshold=0, progress=progress)
+    data = {chr(ord('A') + n): n for n in range(50)}
+    a.measure(data)
+    assert progress.reset.call_args == mock.call(total=101)
+    assert progress.update.called
+    progress.reset_mock()
+    a.analyze(data)
+    assert progress.reset.call_args == mock.call()
+    assert progress.update.called
+
+
+def test_analyzer_scalar():
+    data = 10
+    a = Analyzer(bad_threshold=0)
+    a.measure(data)
+    assert a.analyze(data) == Int(sample=[data])
 
 
 def test_analyze_list():
@@ -113,6 +146,18 @@ def test_analyze_dict_invalid_choices():
                 )
             ]
         )])
+
+
+def test_analyze_dict_bad_data():
+    data = {str(i): i for i in range(100)}
+    data['a'] = 0
+    assert Analyzer(bad_threshold=1/100).analyze(data) == Dict(
+        sample=[data], content=[
+            DictField(
+                StrRepr(Int(Counter(range(100))), pattern='d'),
+                Int(Counter(range(100)))
+            )
+        ])
 
 
 def test_analyze_dict_of_dicts():

@@ -140,6 +140,8 @@ class Analyzer:
         # For the purposes of providing some progress reporting during
         # measurement of all the ids in *it*, we take the ids of all top
         # level items in *it*
+        if self._progress is None:
+            return
         try:
             if isinstance(data, sources_list):
                 top = {id(item) for source in data for item in source}
@@ -149,8 +151,7 @@ class Analyzer:
             # The top-level item is not iterable ... this is going to be
             # quick :)
             top = {id(data)}
-        if self._progress is not None:
-            self._progress.reset(total=len(top))
+        self._progress.reset(total=len(top))
         start = datetime.now()
         count = 0
         for item in flatten(data):
@@ -160,8 +161,7 @@ class Analyzer:
             except KeyError:
                 pass
             else:
-                if self._progress is not None:
-                    self._progress.update()
+                self._progress.update()
         self._progress.reset(total=count)
 
     def analyze(self, data):
