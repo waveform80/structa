@@ -3,6 +3,7 @@ import hashlib
 import datetime as dt
 from itertools import count
 from fractions import Fraction
+from unittest import mock
 
 import pytest
 
@@ -32,31 +33,16 @@ def test_flatten():
 
 
 def test_analyze_progress():
-    a = Analyzer(bad_threshold=0, track_progress=True)
-    assert a.progress is None
-    a._top_ids = set(range(1000))
-    a._top_ids_card = 1000
-    assert a.progress == 0
-    a._top_ids -= set(range(500))
-    assert a.progress == Fraction(1, 10)
-    a._top_ids = set()
-    assert a.progress == Fraction(2, 10)
-    a._all_ids = set(range(1000))
-    a._all_ids_card = 1000
-    assert a.progress == Fraction(2, 10)
-    a._all_ids -= set(range(500))
-    assert a.progress == Fraction(6, 10)
-    a._all_ids = set()
-    assert a.progress == 1
-
-
-def test_analyze_real_progress():
-    a = Analyzer(bad_threshold=0, track_progress=True)
-    assert a.progress is None
-    a.analyze(1)
-    assert a.progress == 1
-    a.analyze(list(range(1000)))
-    assert a.progress == 1
+    progress = mock.Mock()
+    a = Analyzer(bad_threshold=0, progress=progress)
+    data = list(range(1000))
+    a.measure(data)
+    assert progress.reset.call_args == mock.call(total=1001)
+    assert progress.update.called
+    progress.reset_mock()
+    a.analyze(data)
+    assert progress.reset.call_args == mock.call()
+    assert progress.update.called
 
 
 def test_analyze_list():
@@ -112,19 +98,21 @@ def test_analyze_dict_optional_choices():
 
 
 def test_analyze_dict_invalid_choices():
-    data = [{chr(ord('A') + n): n for n in range(50)}] * 99
+    data = [{chr(ord('A') + n): str(n) for n in range(50)}] * 99
     data.append({'foo': 'bar'})
-    with pytest.warns(ValidationWarning):
-        assert Analyzer(bad_threshold=1/100).analyze(data) == List(
-            sample=[data], content=[Dict(
-                sample=data,
-                content=[
-                    DictField(
-                        Str(Counter(k for d in data[:-1] for k in d), pattern=[any_char]),
-                        Int(Counter(v for d in data[:-1] for v in d.values()))
+    assert Analyzer(bad_threshold=1/100).analyze(data) == List(
+        sample=[data], content=[Dict(
+            sample=data,
+            content=[
+                DictField(
+                    Str(Counter(k for d in data for k in d), pattern=None),
+                    StrRepr(
+                        Int(Counter(int(v) for d in data[:-1] for v in d.values())),
+                        pattern='d'
                     )
-                ]
-            )])
+                )
+            ]
+        )])
 
 
 def test_analyze_dict_of_dicts():
@@ -556,8 +544,8 @@ def test_analyze_merge():
         }
         for release in releases
     }
-    print(Analyzer().analyze(data))
-    assert Analyzer().analyze(data) == Dict(
+    a = Analyzer()
+    assert a.merge(a.analyze(data)) == Dict(
         sample=[data],
         content=[
             DictField(

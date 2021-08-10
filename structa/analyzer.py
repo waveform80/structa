@@ -21,6 +21,7 @@ from .chars import (
 from .types import (
     Stats,
     Container,
+    Scalar,
     Bool,
     Field,
     Fields,
@@ -37,6 +38,8 @@ from .types import (
     Empty,
     Value,
     StrRepr,
+    SourcesList,
+    sources_list,
 )
 
 
@@ -105,7 +108,7 @@ class Analyzer:
     def __init__(self, *, bad_threshold=Fraction(2, 100),
                  empty_threshold=Fraction(98, 100), field_threshold=20,
                  max_numeric_len=30, strip_whitespace=False,
-                 min_timestamp=None, max_timestamp=None, track_progress=False):
+                 min_timestamp=None, max_timestamp=None, progress=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.field_threshold = field_threshold
@@ -118,52 +121,66 @@ class Analyzer:
             max_timestamp = now + relativedelta(years=10)
         self.min_timestamp = min_timestamp.timestamp()
         self.max_timestamp = max_timestamp.timestamp()
-        self.track_progress = track_progress
-        self._all_ids = set()
-        self._all_ids_card = 0
-        self._top_ids = set()
-        self._top_ids_card = 0
+        self._progress = progress
 
-    def analyze(self, it):
+    def measure(self, data):
         """
-        Given some value *it* (typically an iterable or mapping), return a
-        description of its structure.
+        Given some value *data* (typically an iterable or mapping), construct
+        an object necessary for tracking the progress of the :meth:`analyze`
+        and :meth:`merge` methods. If this is not called prior to these
+        methods, the :attr:`progress` attribute will simply return :data:`None`
+        during their run.
+
+        As measurement is itself a potentially lengthy process,
+        :attr:`progress` will be reported as a function of the top-level items
+        within *data* during the run of this method. The value returned can be
+        passed as the optional *progress* argument of :meth:`analyze` and
+        :meth:`merge`.
         """
-        if self.track_progress:
-            # For the purposes of providing some progress reporting during
-            # measurement of all the ids in *it*, we take the ids of all top
-            # level items in *it*
+        # For the purposes of providing some progress reporting during
+        # measurement of all the ids in *it*, we take the ids of all top
+        # level items in *it*
+        try:
+            if isinstance(data, sources_list):
+                top = {id(item) for source in data for item in source}
+            else:
+                top = {id(item) for item in data}
+        except TypeError:
+            # The top-level item is not iterable ... this is going to be
+            # quick :)
+            top = {id(data)}
+        if self._progress is not None:
+            self._progress.reset(total=len(top))
+        start = datetime.now()
+        count = 0
+        for item in flatten(data):
+            count += 1
             try:
-                self._top_ids = {id(item) for item in it}
-            except TypeError:
-                # The top-level item is not iterable ... this is going to be
-                # quick :)
+                top.remove(id(item))
+            except KeyError:
                 pass
             else:
-                self._top_ids_card = len(self._top_ids)
-            for item in flatten(it):
-                self._top_ids.discard(id(item))
-                self._all_ids.add(id(item))
-        self._all_ids_card = len(self._all_ids)
-        return self._merge(self._analyze(it, ()))
+                if self._progress is not None:
+                    self._progress.update()
+        self._progress.reset(total=count)
 
-    @property
-    def progress(self):
+    def analyze(self, data):
         """
-        Tracks the current analysis progress as a :class:`~fractions.Fraction`.
+        Given some value *data* (typically an iterable or mapping), return a
+        description of its structure.
         """
-        top_ratio = Fraction(1, 5)
-        if self._all_ids_card:
-            return (
-                top_ratio +
-                (1 - top_ratio) *
-                    (1 - Fraction(len(self._all_ids), self._all_ids_card)))
-        elif self._top_ids_card:
-            return (
-                top_ratio *
-                    (1 - Fraction(len(self._top_ids), self._top_ids_card)))
-        else:
-            return None
+        if self._progress is not None:
+            self._progress.reset()
+        return self._analyze(data, ())
+
+    def merge(self, struct):
+        """
+        Given some *struct* (as returned by :meth:`analyze`), merge common
+        sub-structures within it, returning the top level structure.
+        """
+        if self._progress is not None:
+            self._progress.reset()
+        return self._merge(struct)
 
     def _merge(self, path):
         """
@@ -173,6 +190,8 @@ class Analyzer:
         which maps to the singular structure.
         """
         if isinstance(path, Container):
+            if self._progress is not None:
+                self._progress.update(path.lengths.card)
             if isinstance(path, Dict):
                 # Only Dicts containing containers are merged; Dicts (directly)
                 # containing scalars, and Tuples are left alone as containers
@@ -187,16 +206,20 @@ class Analyzer:
                     )
                 ):
                     keys = self._match(
-                        (item.key.value for item in path.content),
+                        (
+                            item.key.value
+                            for item in path.content
+                            for i in range(item.key.count)
+                        ),
                         (path,), threshold=0)
                     return path.with_content([
-                        DictField(keys, sum(
+                        DictField(self._merge(keys), self._merge(sum(
                             (p.value for p in path.content[1:]),
                             path.content[0].value
-                        ))
+                        )))
                     ])
                 return path.with_content([
-                    DictField(field.key, self._merge(field.value))
+                    DictField(self._merge(field.key), self._merge(field.value))
                     for field in path.content
                 ])
             else:
@@ -205,6 +228,11 @@ class Analyzer:
                     for item in path.content
                 ])
         else:
+            if self._progress is not None:
+                if isinstance(path, Field):
+                    self._progress.update(path.count)
+                elif isinstance(path, Scalar):
+                    self._progress.update(path.values.card)
             return path
 
     def _analyze(self, it, path, *, threshold=None, card=1):
@@ -240,10 +268,10 @@ class Analyzer:
             card=pattern.lengths.card)
         if isinstance(fields, Fields):
             return pattern.with_content([
-                DictField(choice, self._analyze(
-                    it, path + (pattern, choice),
+                DictField(field, self._analyze(
+                    it, path + (pattern, field),
                     card=pattern.lengths.card))
-                for choice in sorted(fields)
+                for field in sorted(fields)
             ])
         else:
             return pattern.with_content([
@@ -267,10 +295,10 @@ class Analyzer:
             card=pattern.lengths.card)
         if isinstance(fields, Fields):
             return pattern.with_content([
-                TupleField(choice, self._analyze(
-                    it, path + (pattern, choice),
+                TupleField(field, self._analyze(
+                    it, path + (pattern, field),
                     card=pattern.lengths.card))
-                for choice in sorted(fields)
+                for field in sorted(fields)
             ])
         else:
             return pattern.with_content([
@@ -282,12 +310,12 @@ class Analyzer:
     def _extract(self, it, path):
         """
         Extract all entries from *it* (a potentially nested iterable which is
-        the top-level object passed to :func:`analyze`), at the level dictated
+        the top-level object passed to :meth:`analyze`), at the level dictated
         by *path*, a sequence of pattern-matching objects.
         """
         if not path:
-            if self.track_progress:
-                self._all_ids.discard(id(it))
+            if self._progress is not None:
+                self._progress.update()
             yield it
         else:
             head, *tail = path
@@ -331,9 +359,9 @@ class Analyzer:
                             .format(key=key, head=head)))
         else:
             # keys
-            if self.track_progress:
+            if self._progress is not None:
                 for item in it:
-                    self._all_ids.discard(id(item))
+                    self._progress.update()
                     yield item
             else:
                 yield from it
@@ -376,6 +404,8 @@ class Analyzer:
         items = list(items)
         if not items:
             return Empty()
+        elif all(isinstance(item, sources_list) for item in items):
+            return SourcesList(items)
         elif all(isinstance(item, tuple) for item in items):
             return Tuple(items)
         elif all(isinstance(item, list) for item in items):
@@ -408,7 +438,7 @@ class Analyzer:
                 if path and isinstance(path[-1], (Dict, Tuple)):
                     if len(sample) < threshold:
                         return Fields(
-                            Field(key, optional=count < parent_card)
+                            Field(key, count, optional=count < parent_card)
                             for key, count in sample.items()
                         )
 
@@ -441,45 +471,25 @@ class Analyzer:
         maximum string length is below :attr:`max_numeric_len`.
         """
         total = sum(items.values())
-        unique = len(items) == total
         if '' in items:
             if items[''] / total > self.empty_threshold:
                 return Str(items)
             del items['']
         bad_threshold = ceil(total * self.bad_threshold)
-        if unique or bad_threshold == 0:
-            sample = items
-        else:
-            min_coverage = total - bad_threshold
-            coverage = 0
-            sample = Counter()
-            for item, count in items.most_common():
-                sample[item] = count
-                coverage += count
-                if coverage >= min_coverage:
-                    # We've excluded potentially bad values based on
-                    # popularity
-                    bad_threshold = 0
-                    break
-                elif count == 1:
-                    # Too many unique values to determine which should be
-                    # ignored by popularity; just use regular bad_threshold
-                    sample = items
-                    break
 
-        lengths = Stats.from_lengths(sample)
+        lengths = Stats.from_lengths(items)
         if lengths.max <= self.max_numeric_len:
-            result = self._match_numeric_str(sample, bad_threshold=bad_threshold)
+            result = self._match_numeric_str(items, bad_threshold=bad_threshold)
             if result is not None:
                 return self._match_possible_datetime(result)
         if lengths.min == lengths.max:
-            return self._match_fixed_len_str(sample, bad_threshold=bad_threshold)
+            return self._match_fixed_len_str(items, bad_threshold=bad_threshold)
         # XXX Add is_base64 (and others?)
-        if all(value.startswith(('http://', 'https://')) for value in sample):
+        if all(value.startswith(('http://', 'https://')) for value in items):
             # XXX Refine this to parse URLs
-            return URL(sample)
+            return URL(items)
         else:
-            return Str(sample)
+            return Str(items)
 
     def _match_fixed_len_str(self, items, *, bad_threshold=0):
         """

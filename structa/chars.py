@@ -2,6 +2,10 @@ import re
 import sys
 
 from .format import format_chars
+from .xml import ElementFactory
+
+
+tag = ElementFactory()
 
 
 def char_range(start, stop):
@@ -41,7 +45,33 @@ class CharClass(frozenset):
         elif len(self) == 1:
             return format_chars(self)
         else:
-            return '[{ranges}]'.format(ranges=format_chars(self))
+            try:
+                return {
+                    oct_digit:   'o',
+                    dec_digit:   'd',
+                    hex_digit:   'x',
+                    ident_first: 'I',
+                    ident_char:  'i',
+                }[self]
+            except KeyError:
+                return '[{ranges}]'.format(ranges=format_chars(self))
+
+    def __xml__(self):
+        if len(self) == 0:
+            return tag.pat()
+        elif len(self) == 1:
+            return tag.lit(format_chars(self))
+        else:
+            try:
+                return tag.pat({
+                    oct_digit:   'o',
+                    dec_digit:   'd',
+                    hex_digit:   'x',
+                    ident_first: 'I',
+                    ident_char:  'i',
+                }[self])
+            except KeyError:
+                return tag.pat('[{ranges}]'.format(ranges=format_chars(self)))
 
     def __and__(self, other):
         result = super().__and__(other)
@@ -85,6 +115,8 @@ class CharClass(frozenset):
 
 
 class AnyChar:
+    _hash = None
+
     def __new__(cls):
         # Singleton instance
         try:
@@ -98,6 +130,9 @@ class AnyChar:
     def __str__(self):
         return '.'
 
+    def __xml__(self):
+        return tag.pat('.')
+
     def __iter__(self):
         for i in range(sys.maxunicode + 1):
             yield chr(i)
@@ -107,6 +142,11 @@ class AnyChar:
 
     def __contains__(self, value):
         return isinstance(value, str) and len(value) == 1
+
+    def __hash__(self):
+        if AnyChar._hash is None:
+            AnyChar._hash = hash(frozenset(chr(i) for i in range(len(self))))
+        return AnyChar._hash
 
     def __eq__(self, other):
         if isinstance(other, AnyChar):
