@@ -1,3 +1,4 @@
+import sys
 import random
 import hashlib
 import datetime as dt
@@ -325,6 +326,8 @@ def test_analyze_datetime_str():
         content=[StrRepr(DateTime(Counter(dates)), pattern='%Y-%m-%d %H:%M:%S')])
 
 
+@pytest.mark.xfail(sys.version_info < (3, 7),
+                   reason='3.7+ datetime required for Z or +HH:MM timezones')
 def test_analyze_datetime_str_varlen():
     now = dt.datetime.now()
     start = (now - dt.timedelta(days=50)).timestamp()
