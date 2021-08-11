@@ -70,7 +70,7 @@ develop:
 	@# These have to be done separately to avoid a cockup...
 	$(PIP) install -U setuptools
 	$(PIP) install -U pip
-	$(PIP) install -e .[doc,test]
+	$(PIP) install -e .[doc,test,yaml]
 
 test:
 	$(PYTEST)
