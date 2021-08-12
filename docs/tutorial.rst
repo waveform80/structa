@@ -23,11 +23,202 @@ is figuring out what to twiddle them to.
 Basic Usage
 ===========
 
-We'll start with a custom made data-set which will allow us to tweak things and
-see what's going on under structa's hood a bit more easily. The following
-script generates a fairly sizeable JSON file (~11MB) apparently recording
-various air quality readings from places which bear absolutely no resemblance
-whatsoever to my adoptive home city (ahem):
+We'll start with some basic data structures and see how structa handles them.
+The following code dumps a list of strings representing integers to stdout in
+JSON format:
+
+.. literalinclude:: examples/str-nums.py
+   :caption:
+
+We can capture the output in a file and pass this to structa:
+
+.. code-block:: console
+
+    $ python3 str-nums.py > str-nums.json
+    $ structa str-nums.json
+    [ str of int range=0..999 pattern="d" ]
+
+Alternatively, we can pipe the output straight to structa:
+
+.. code-block:: console
+
+    $ python3 str-nums.py | structa
+    [ str of int range=0..999 pattern="d" ]
+
+The output shows that the data contains a list (indicated by the
+square-brackets surrounding the output) of strings of integers ("str of int"),
+which have values between 0 and 999 (inclusive). The "pattern" at the end
+indicates that the strings are in decimal ("d") form (structa would also
+recognize octal, "o", and hexadecimal "x" forms of integers).
+
+
+Bad Data (``--bad-threshold``)
+------------------------------
+
+Let's see how structa handles bad data. We'll add a non-numeric string into our
+list of numbers:
+
+.. literalinclude:: examples/bad-nums.py
+   :caption:
+
+What does structa do in the presence of this "corrupt" data?
+
+.. code-block:: console
+
+    $ python3 bad-nums.py | structa
+    [ str of int range=0..999 pattern="d" ]
+
+Apparently nothing! It may seem odd that structa raised no errors, or even
+warnings when encountering subtly incorrect data. However, structa has a "bad
+threshold" setting (:option:`structa --bad-threshold`) which means not all data
+in a given sequence has to match the pattern under test.
+
+This setting defaults to 1% (or 0.01) meaning that up to 1% of the values can
+fail to match and the pattern will still be considered valid. If we lower the
+bad threshold to zero, this is what happens:
+
+.. code-block:: console
+
+    $ python3 bad-nums.py | structa --bad-threshold 0
+    [ str range="0".."foo" ]
+
+It's still recognized as a list of strings, but no longer as string
+representations of integers.
+
+How about mixing types? The following script outputs our errant string, "foo",
+along with a list of numbers. However, note that this time the numbers are
+integers, not strings of integers. In other words we have a list of a string,
+and lots of integers:
+
+.. literalinclude:: examples/bad-types.py
+   :caption:
+
+.. code-block:: console
+
+    $ python3 bad-types.py | structa
+    [ value ]
+
+In this case, even with the default 1% bad threshold, structa doesn't exclude
+the bad data; the analysis simply returns it as a list of mixed "values".
+
+This is because structa assumes that the *types* of data are at least correct,
+under the assumption that if whatever is generating your data hasn't even got
+the data types right, you've got bigger problems! The bad threshold mechanism
+only applies to bad data *within* a homogenous type (typically bad string
+representations of numeric or boolean types).
+
+
+Missing Data (``--empty-threshold``)
+------------------------------------
+
+Another type of "bad" data commonly encountered is empty strings which are
+typically used to represent *missing* data, and (predictably) structa has
+another knob that can be twiddled for this: :option:`structa
+--empty-threshold`. The following script generates a list of strings of
+integers in which most of the strings (~70%) are blank:
+
+.. literalinclude:: examples/mostly-blank.py
+   :caption:
+
+Despite the vast majority of the data being blank, structa handles this as
+normal:
+
+.. code-block:: console
+
+    $ python3 mostly-blank.py | structa
+    [ str of int range=0..100 pattern="d" ]
+
+This is because the default for :option:`structa --empty-threshold` is 99% or
+0.99. If the proportion of blank strings in a field exceeds the empty
+threshold, the field will simply be marked as a string without any further
+processing. Hence, when we re-run this script with the setting turned down to
+50%, the output changes:
+
+.. code-block:: console
+
+    $ python3 mostly-blank.py | structa --empty-threshold 50%
+    [ str range="".."99" ]
+
+.. note::
+
+    For those slightly confused by the above output: structa hasn't lost the
+    "100" value, but because it's now considered a string (not a string of
+    integers), "100" sorts before "99" alphabetically.
+
+
+Fields (``--field-threshold``)
+------------------------------
+
+The final major knob that can be twiddled in structa is the :option:`structa
+--field-threshold`. This is used to distinguish between mappings that act as a
+"table" (mapping keys to records) and mappings that act as a record (mapping
+field-names, typically strings, to their values).
+
+Specifically, if mappings are found with more keys than the threshold, those
+mappings will be treated as tables. However, if mappings are found with fewer
+(or equal) keys to the threshold, they will be analyzed as records. It's a
+rather arbitrary value that (unfortunately) usually requires some
+fore-knowledge of the data being analyzed. However, it's usually quite easy to
+spot when the threshold is wrong, as we'll see.
+
+First, let's take a look at what happens when the threshold is set correctly.
+The following script generates a mapping of mappings. The outer mapping
+contains 200 items, while the inner mappings each contain 3 items labelled
+"id", "foo", and "bar":
+
+.. literalinclude:: examples/simple-fields.py
+   :caption:
+
+When passed to structa, with the default field threshold of 20, we see the
+following output:
+
+.. code-block:: console
+
+    $ python3 simple-fields.py | structa
+    {
+        str of int range=0..199 pattern="d": {
+            'bar': str range="ABZ".."ORK" pattern="Iii",
+            'foo': int range=15..50,
+            'id': int range=0..199
+        }
+    }
+
+This indicates that structa has recognized the data as consisting of a mapping
+(indicated by the surrounding braces), which is keyed by a decimal string
+representation of an integer (in the range 0 to 199), and the values of which
+are another mapping with the keys "id", "foo", and "bar".
+
+The reason the inner mappings were treated as a set of records was because all
+those mappings had less than 20 entries. The outer mapping had more than 20
+entries (200 in this case) and thus was treated as a table.
+
+What happens if we force the field threshold down so low that the inner
+mappings are also treated as a table?
+
+.. code-block:: console
+
+    $ python3 simple-fields.py | structa --field-threshold 2
+    {
+        str of int range=0..199 pattern="d": { str range="bar".."id": value }
+    }
+
+The inner mappings are now defined simply as mappings of strings (in the range
+"bar" to "id", sorted alphabetically) which map to "value" (an arbitrary mix of
+types). Anytime you see a mapping of ``{ str: value }`` in structa's output,
+it's a *fairly* good clue that :option:`structa --field-threshold` might be
+too low.
+
+
+"Real World" Data
+=================
+
+Next, we'll move onto using a slight more complex, custom made data-set which
+will allow us to tweak things and see what's going on under structa's hood a
+bit more easily.
+
+The following script generates a fairly sizeable JSON file (~11MB) apparently
+recording various air quality readings from places which bear absolutely no
+resemblance whatsoever to my adoptive home city (ahem):
 
 .. literalinclude:: examples/air-quality.py
    :caption:
@@ -179,53 +370,8 @@ a string is such.
 For the avoidance of doubt, this is not the case: structa *does* attempt to
 convert timestamps correctly and does *not* think February 31st is a valid date
 (unlike certain databases!). However, structa does have a "bad threshold"
-setting (:option:`--bad-threshold`) which means not all data in a given
+setting (:option:`structa --bad-threshold`) which means not all data in a given
 sequence has to match the pattern under test.
-
-Here's a simpler example to demonstrate. The following code dumps a list of
-string representations of integers to stdout.
-
-.. literalinclude:: examples/bad-nums.py
-   :caption:
-
-Here's structa's analysis of this:
-
-.. code-block:: console
-
-    $ python3 bad-nums.py | structa
-    [ str of int range=0..999 pattern="d" ]
-
-Once again structa has ignored the "bad" data ("foo") in its analysis. This is
-because the bad data is a single value out of 3001 values (~0.03%), and the
-default bad threshold is 1%. If we lower the bad threshold to zero, this is
-what happens:
-
-.. code-block:: console
-
-    $ python3 bad-nums.py | structa --bad-threshold 0
-    [ str range="0".."foo" ]
-
-It's still recognized as a list of strings, but no longer as string
-representations of integers.
-
-What about mixing types?
-
-.. literalinclude:: examples/bad-types.py
-   :caption:
-
-In this case, even with the default 1% bad threshold, structa doesn't exclude
-the bad data; the analysis simply returns it as a list of mixed values:
-
-.. code-block:: console
-
-    $ python3 bad-types.py | structa
-    [ value ]
-
-This is because structa assumes that the *types* of data are at least correct
-(under the assumption that if whatever is generating the data hasn't even got
-the types right, you've got bigger problems!). The bad threshold mechanism only
-applies to bad data *within* a homogenous type (typically bad string
-representations of numeric or boolean types).
 
 
 Whitespace
@@ -233,8 +379,8 @@ Whitespace
 
 By default, structa strips whitespace from strings prior to analysis. This is
 probably not necessary for the vast majority of modern datasets, but it's a
-reasonably safe default, and can be controlled with the
-:option:`--strip-whitespace` and :option:`--no-strip-whitespace` options in any
+reasonably safe default, and can be controlled with the :option:`structa
+--strip-whitespace` and :option:`structa --no-strip-whitespace` options in any
 case.
 
 One other option that is affected by whitespace stripping is the "empty"
@@ -261,14 +407,3 @@ which will be blank. By default, structa is happy with this:
     [ str of int range=0..100 pattern="d" ]
 
 However, if we force the empty threshold down below 70%:
-
-.. code-block:: console
-
-    $ python3 mostly-blank.py | structa --empty-threshold 50%
-    [ str range="".."99" ]
-
-.. note::
-
-    For those slightly confused by the above output: structa hasn't lost the
-    "100" value, but because it's now considered a string (not a string of
-    integers), "100" sorts before "99" alphabetically.
