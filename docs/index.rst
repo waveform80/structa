@@ -7,6 +7,7 @@ Contents
 
     install
     tutorial
+    manual
     api
     changelog
     license

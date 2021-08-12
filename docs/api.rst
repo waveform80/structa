@@ -1,14 +1,9 @@
-===
-API
-===
+=============
+API Reference
+=============
 
 In addition to being a utility, structa can also be used as an API from Python
 (either in a script, or just at the console).
-
-Console Usage
-=============
-
-TODO
 
 Modules
 =======
