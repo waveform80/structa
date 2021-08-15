@@ -4,10 +4,13 @@ Contents
 ========
 
 .. toctree::
+    :maxdepth: 1
 
     install
-    tutorial
+    tutorial_basic
+    tutorial_real
     manual
+    recipes
     api
     changelog
     license

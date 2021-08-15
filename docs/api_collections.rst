@@ -2,4 +2,6 @@
 structa.collections
 ===================
 
-.. automodule:: structa.collections
+.. module:: structa.collections
+
+.. autoclass:: FrozenCounter

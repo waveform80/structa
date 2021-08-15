@@ -9,10 +9,41 @@ tag = ElementFactory()
 
 
 def char_range(start, stop):
+    """
+    Returns a :class:`CharClass` containing all the characters from *start* to
+    *stop* inclusive (in unicode codepoint order). For example::
+
+        >>> char_range('a', 'c')
+        CharClass('abc')
+        >>> char_range('0', '9')
+        CharClass('0123456789')
+    """
     return CharClass({chr(i) for i in range(ord(start), ord(stop) + 1)})
 
 
 class CharClass(frozenset):
+    """
+    A descendent of :class:`frozenset` intended to represent a character class
+    in a regular expression. Can be instantiated from any iterable of single
+    characters (including a :class:`str`).
+
+    All operations of :class:`frozenset` are supported, but return instances of
+    :class:`CharClass` instead (and thus, are only valid for operations which
+    result in sets containing individual character values). For example::
+
+        >>> abc = CharClass('abc')
+        >>> abc
+        CharClass('abc')
+        >>> ghi = CharClass('ghi')
+        >>> abc == ghi
+        False
+        >>> abc < ghi
+        False
+        >>> abc | ghi
+        CharClass('abcghi')
+        >>> abc < abc | ghi
+        True
+    """
     def __new__(cls, chars):
         if isinstance(chars, CharClass):
             return chars
@@ -115,6 +146,22 @@ class CharClass(frozenset):
 
 
 class AnyChar:
+    """
+    A singleton class (all instances are the same) which represents any
+    possible character. This is comparable with, and compatible in operations
+    with, instances of :class:`CharClass`. For instance::
+
+        >>> abc = CharClass('abc')
+        >>> any_ = AnyChar()
+        >>> any_
+        AnyChar()
+        >>> abc < any_
+        True
+        >>> abc > any_
+        False
+        >>> abc | any_
+        AnyChar()
+    """
     _hash = None
 
     def __new__(cls):

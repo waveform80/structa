@@ -3,12 +3,30 @@ from collections.abc import Mapping
 
 
 class FrozenCounter(Mapping):
+    """
+    An immutable variant of the :class:`collections.Counter` class from the
+    Python standard library.
+
+    This implements all readable properties and behaviours of the
+    :class:`collections.Counter` class, but excludes all methods and behaviours
+    which permit modification of the counter. The resulting instances are
+    hashable and can be used as keys in mappings.
+    """
     def __init__(self, it):
         self._counter = Counter(it)
         self._hash = None
 
     @classmethod
     def from_counter(cls, counter):
+        """
+        Construct a :class:`FrozenCounter` from a :class:`collections.Counter`
+        instance. This is generally much faster than attempting to construct
+        from the elements of an existing counter.
+
+        The *counter* parameter must either be a :class:`collections.Counter`
+        instance, or a :class:`FrozenCounter` instance (in which case it is
+        returned verbatim).
+        """
         if isinstance(counter, Counter):
             self = cls(())
             self._counter = counter.copy()
@@ -20,9 +38,15 @@ class FrozenCounter(Mapping):
             assert False
 
     def most_common(self, n=None):
+        """
+        See :meth:`collections.Counter.most_common`.
+        """
         return self._counter.most_common(n)
 
     def elements(self):
+        """
+        See :meth:`collections.Counter.elements`.
+        """
         return self._counter.elements()
 
     def __iter__(self):

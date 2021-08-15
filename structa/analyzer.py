@@ -7,6 +7,7 @@ from itertools import groupby
 
 from dateutil.relativedelta import relativedelta
 
+from .errors import ValidationWarning
 from .conversions import try_conversion
 from .chars import (
     CharClass,
@@ -81,13 +82,6 @@ DIGIT_BASES = {
 DIGITS = set(DIGIT_BASES.values())
 
 
-class ValidationWarning(Warning):
-    """
-    Warning raised when a value fails to validate against the computed pattern
-    or schema.
-    """
-
-
 def flatten(it):
     try:
         for key, value in it.items():
@@ -122,19 +116,50 @@ class Analyzer:
         self.max_timestamp = max_timestamp.timestamp()
         self._progress = progress
 
+    @property
+    def progress(self):
+        """
+        The object passed as the *progress* parameter on construction.
+
+        If this is not :data:`None`, it must be an object which implements the
+        following methods:
+
+        * ``reset(*, total: int=None)``
+        * ``update(n: int=None)``
+
+        The "reset" method of the object will be called with either the keyword
+        argument "total", indicating the new number of steps that have yet to
+        complete, or with no arguments indicating the progress display should
+        be cleared as a task is complete.
+
+        The "update" method of the object will be called with either the number
+        of steps to increment by (as the positional "n" argument), or with no
+        arguments indicating that the display should simply be refreshed (e.g.
+        to recalculate the time remaining, or update a time elapsed display).
+
+        It is no coincidence that this is a sub-set of the public API of the
+        `tqdm`_ progress bar project (as that's what structa uses in its CLI
+        implementation).
+
+        .. _tqdm: https://pypi.org/project/tqdm/
+        """
+        return self._progress
+
     def measure(self, data):
         """
-        Given some value *data* (typically an iterable or mapping), construct
-        an object necessary for tracking the progress of the :meth:`analyze`
-        and :meth:`merge` methods. If this is not called prior to these
-        methods, the :attr:`progress` attribute will simply return :data:`None`
-        during their run.
+        Given some value *data* (typically an iterable or mapping), measure the
+        number of items within it, for the purposes of accurately reporting
+        progress during the running of the :meth:`analyze` and :meth:`merge`
+        methods.
 
-        As measurement is itself a potentially lengthy process,
-        :attr:`progress` will be reported as a function of the top-level items
-        within *data* during the run of this method. The value returned can be
-        passed as the optional *progress* argument of :meth:`analyze` and
-        :meth:`merge`.
+        If this is not called prior to these methods, they will still run
+        successfully, but progress tracking (via the :attr:`progress` object)
+        will be inaccurate as the total number of steps to process will never
+        be calculated.
+
+        As measurement is itself a potentially lengthy process, progress will
+        be reported as a function of the top-level items within *data* during
+        the run of this method.
         """
         # For the purposes of providing some progress reporting during
         # measurement of all the ids in *it*, we take the ids of all top
@@ -165,8 +190,8 @@ class Analyzer:
 
     def analyze(self, data):
         """
-        Given some value *data* (typically an iterable or mapping), return a
-        description of its structure.
+        Given some value *data* (typically an iterable or a mapping), return
+        a :class:`~structa.type.Type` descendent describing its structure.
         """
         if self._progress is not None:
             self._progress.reset()
@@ -175,7 +200,8 @@ class Analyzer:
     def merge(self, struct):
         """
         Given some *struct* (as returned by :meth:`analyze`), merge common
-        sub-structures within it, returning the top level structure.
+        sub-structures within it, returning the new top level structure
+        (another :class:`~structa.types.Type` instance).
         """
         if self._progress is not None:
             self._progress.reset()

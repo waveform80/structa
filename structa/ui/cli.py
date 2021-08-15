@@ -9,7 +9,8 @@ from blessings import Terminal
 from tqdm import tqdm
 from pkg_resources import require
 
-from ..analyzer import Analyzer, ValidationWarning
+from ..analyzer import Analyzer
+from ..errors import ValidationWarning
 from ..conversions import parse_duration_or_timestamp
 from ..types import sources_list, SourcesList
 from ..source import Source

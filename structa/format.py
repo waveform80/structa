@@ -60,7 +60,18 @@ def format_chars(chars, range_sep='-', list_sep=''):
 def format_int(i):
     """
     Reduce *i* by some appropriate power of 1000 and suffix it with an
-    appropriate Greek qualifier (K for kilo, M for mega, etc.)
+    appropriate Greek qualifier (K for kilo, M for mega, etc). For example::
+
+        >>> format_int(0)
+        '0'
+        >>> format_int(10)
+        '10'
+        >>> format_int(1000)
+        '1.0K'
+        >>> format_int(1600)
+        '1.6K'
+        >>> format_int(2**32)
+        '4.3G'
     """
     suffixes = ('', 'K', 'M', 'G', 'T', 'P')
     try:
@@ -100,6 +111,31 @@ def format_repr(self, **override):
 
 
 def format_sample(value):
+    """
+    Format a scalar value for output. The *value* can be a :class:`str`,
+    :class:`int`, :class:`float`, :class:`bool`, :class:`~datetime.datetime`,
+    or :data:`None`.
+
+    The result is a :class:`str` containing a "nicely" formatted representation
+    of the value. For example::
+
+        >>> format_sample(1.0)
+        '1'
+        >>> format_sample(1.5)
+        '1.5'
+        >>> format_sample(200000000000)
+        '200.0G'
+        >>> format_sample(200000000000.0)
+        '2e+11'
+        >>> format_sample(None)
+        'null'
+        >>> format_sample(False)
+        'false'
+        >>> format_sample('foo')
+        '"foo"'
+        >>> format_sample(datetime.now())
+        '2021-08-16 14:05:04'
+    """
     try:
         return {
             datetime:   lambda: '{0:%Y-%m-%d %H:%M:%S}'.format(value),

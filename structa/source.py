@@ -5,7 +5,7 @@ import json
 import warnings
 from chardet.universaldetector import UniversalDetector
 
-from .analyzer import ValidationWarning
+from .errors import ValidationWarning
 
 try:
     from ruamel import yaml

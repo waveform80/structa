@@ -5,7 +5,7 @@ Changelog
 .. currentmodule:: structa
 
 
-Release 0.2 (2021-01-??)
+Release 0.2 (2021-08-17)
 ========================
 
 * Better tuple analysis (`#4`_) which was a pre-requisite for...
@@ -15,6 +15,7 @@ Release 0.2 (2021-01-??)
 * Added documentation (`#9`_)
 * Added YAML support (`#10`_)
 * Better elimination of common sub-trees (`#12`_)
+* Multi-file input support (`#15`_)
 
 .. _#4: https://github.com/waveform80/structa/issues/4
 .. _#5: https://github.com/waveform80/structa/issues/5
@@ -23,6 +24,7 @@ Release 0.2 (2021-01-??)
 .. _#9: https://github.com/waveform80/structa/issues/9
 .. _#10: https://github.com/waveform80/structa/issues/10
 .. _#12: https://github.com/waveform80/structa/issues/12
+.. _#15: https://github.com/waveform80/structa/issues/15
 
 
 Release 0.1 (2018-12-17)

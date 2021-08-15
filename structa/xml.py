@@ -75,14 +75,14 @@ class ElementFactory:
     conversion to them (except basestring derived types like string and unicode
     which are simply used verbatim).
 
-    For example:
+    For example::
 
-    >>> tostring(tag.a('A link'))
-    '<a>A link</a>'
-    >>> tostring(tag.a('A link', class_='menuitem'))
-    '<a class="menuitem">A link</a>'
-    >>> tostring(tag.p('A ', tag.a('link', class_='menuitem')))
-    '<p>A <a class="menuitem">link</a></p>'
+        >>> tostring(tag.a('A link'))
+        '<a>A link</a>'
+        >>> tostring(tag.a('A link', class_='menuitem'))
+        '<a class="menuitem">A link</a>'
+        >>> tostring(tag.p('A ', tag.a('link', class_='menuitem')))
+        '<p>A <a class="menuitem">link</a></p>'
     """
 
     def __init__(self, namespace=None):
