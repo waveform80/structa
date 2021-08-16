@@ -47,6 +47,16 @@ pygments_style = 'sphinx'
 # -- Autodoc options ---------------------------------------------------------
 
 autodoc_member_order = 'groupwise'
+autodoc_default_options = {
+    'members': True,
+}
+autodoc_mock_imports = [
+    'lxml',
+    'chardet',
+    'blessings',
+    'tqdm',
+    'dateutil',
+]
 
 # -- Intersphinx options -----------------------------------------------------
 
