@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # vim: set et sw=4 sts=4 fileencoding=utf-8:
+#
+# structa: an application for analyzing repetitive data structures
+#
+# Copyright (c) 2018-2021 Dave Jones <dave@waveform.org.uk>
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 import sys
 import os
