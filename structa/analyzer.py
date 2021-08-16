@@ -155,11 +155,13 @@ class Analyzer:
     """
     def __init__(self, *, bad_threshold=Fraction(2, 100),
                  empty_threshold=Fraction(98, 100), field_threshold=20,
-                 max_numeric_len=30, strip_whitespace=False,
-                 min_timestamp=None, max_timestamp=None, progress=None):
+                 merge_threshold=Fraction(50, 100), max_numeric_len=30,
+                 strip_whitespace=False, min_timestamp=None,
+                 max_timestamp=None, progress=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.field_threshold = field_threshold
+        self.merge_threshold = merge_threshold
         self.max_numeric_len = max_numeric_len
         self.strip_whitespace = strip_whitespace
         now = datetime.now()
@@ -260,6 +262,9 @@ class Analyzer:
         """
         if self._progress is not None:
             self._progress.reset()
+        if isinstance(struct, Container):
+            # NOTE this propagates down all subordinate Containers
+            struct.similarity_threshold = self.merge_threshold
         return self._merge(struct)
 
     def _merge(self, path):

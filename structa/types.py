@@ -215,6 +215,8 @@ class Container(Type):
 
     @similarity_threshold.setter
     def similarity_threshold(self, value):
+        # FIXME this propagation should be done externally to permit fine
+        # grained control of this property should users require it
         self._similarity_threshold = value
         for item in self.content:
             if isinstance(item, (TupleField, DictField)):

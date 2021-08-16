@@ -83,6 +83,11 @@ def get_config(args):
         "instead of being lumped under a generic type like <str> (default: "
         "%(default)s)")
     parser.add_argument(
+        '-M', '--merge-threshold', type=num, metavar='NUM', default='50%',
+        help="The proportion of mapping fields which must match other "
+        "mappings for them to be considered potential merge candidates "
+        "(default: %(default)s)")
+    parser.add_argument(
         '-B', '--bad-threshold', type=num, metavar='NUM', default='1%',
         help="The proportion of string values which are allowed to mismatch "
         "a pattern without preventing the pattern from being reported; the "
@@ -273,6 +278,7 @@ class MyAnalyzer(Analyzer):
             bad_threshold=config.bad_threshold,
             empty_threshold=config.empty_threshold,
             field_threshold=config.field_threshold,
+            merge_threshold=config.merge_threshold,
             max_numeric_len=config.max_numeric_len,
             strip_whitespace=config.strip_whitespace,
             min_timestamp=config.min_timestamp,

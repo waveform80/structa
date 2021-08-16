@@ -8,16 +8,17 @@ Synopsis
 .. code-block:: text
 
     structa [-h] [--version] [-f {auto,csv,json,yaml}] [-e ENCODING]
-            [--encoding-strict] [--no-encoding-strict] [-F INT] [-B NUM]
-            [-E NUM] [--str-limit NUM] [--hide-count] [--show-count]
-            [--hide-lengths] [--show-lengths] [--hide-pattern] [--show-pattern]
+            [--encoding-strict] [--no-encoding-strict]
+            [-F INT] [-M NUM] [-B NUM] [-E NUM] [--str-limit NUM]
+            [--hide-count] [--show-count] [--hide-lengths] [--show-lengths]
+            [--hide-pattern] [--show-pattern]
             [--hide-range] [--show-range {hidden,limits,median,quartiles,graph}]
             [--hide-samples] [--show-samples]
             [--min-timestamp WHEN] [--max-timestamp WHEN]
             [--max-numeric-len LEN] [--sample-bytes SIZE]
             [--strip-whitespace] [--no-strip-whitespace]
-            [--csv-format FIELD[QUOTE]]
-            [--yaml-safe] [--no-yaml-safe] [file [file ...]]
+            [--csv-format FIELD[QUOTE]] [--yaml-safe] [--no-yaml-safe]
+            [file [file ...]]
 
 
 .. program:: structa
@@ -66,6 +67,11 @@ Optional Arguments
     If the number of distinct keys in a map, or columns in a tuple is less than
     this then they will be considered distinct fields instead of being lumped
     under a generic type like *str* (default: 20)
+
+.. option:: -M NUM, --merge-threshold NUM
+
+    The proportion of mapping fields which must match other mappings for them
+    to be considered potential merge candidates (default: 50%)
 
 .. option:: -B NUM, --bad-threshold NUM
 
@@ -159,4 +165,3 @@ Optional Arguments
     Controls whether the "safe" or "unsafe" YAML loader is used to parse YAML
     files. The default is the "safe" parser. Only use :option:`--no-yaml-safe`
     if you trust the source of your data
-
