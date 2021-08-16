@@ -18,6 +18,7 @@ Contents
     manual
     recipes
     api
+    development
     changelog
     license
 
