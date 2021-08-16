@@ -6,13 +6,14 @@ SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
 PAPER         =
 BUILDDIR      = ../build
-PYTHON        = python3
+PY_SOURCES    := $(wildcard ../structa/*.py)
 DOT_DIAGRAMS  := $(wildcard images/*.dot)
 MSC_DIAGRAMS  := $(wildcard images/*.mscgen)
 GPI_DIAGRAMS  := $(wildcard images/*.gpi)
 SVG_IMAGES    := $(wildcard images/*.svg) $(DOT_DIAGRAMS:%.dot=%.svg) $(MSC_DIAGRAMS:%.mscgen=%.svg)
 PNG_IMAGES    := $(wildcard images/*.png) $(GPI_DIAGRAMS:%.gpi=%.png) $(SVG_IMAGES:%.svg=%.png)
 PDF_IMAGES    := $(SVG_IMAGES:%.svg=%.pdf) $(GPI_DIAGRAMS:%.gpi=%.pdf) $(DOT_DIAGRAMS:%.dot=%.pdf) $(MSC_DIAGRAMS:%.mscgen=%.pdf)
+INKSCAPE_VER  := $(shell inkscape --version | sed -ne '/^Inkscape/ s/^Inkscape \([0-9]\+\)\..*$$/\1/p')
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
@@ -35,7 +36,6 @@ help:
 	@echo "  epub       to make an epub"
 	@echo "  latex      to make LaTeX files, you can set PAPER=a4 or PAPER=letter"
 	@echo "  latexpdf   to make LaTeX files and run them through pdflatex"
-	@echo "  latexpdfja to make LaTeX files and run them through platex/dvipdfmx"
 	@echo "  text       to make text files"
 	@echo "  man        to make manual pages"
 	@echo "  gettext    to make PO message catalogs"
@@ -118,7 +118,10 @@ pseudoxml:
 	@echo "Build finished. The pseudo-XML files are in $(BUILDDIR)/pseudoxml."
 
 preview:
-	$(PYTHON) previewer.py -w . $(BUILDDIR)/html
+	../scripts/previewer $(BUILDDIR)/html
+
+images/types.dot: $(PY_SOURCES)
+	../scripts/class_graph -i Type -i Stats -x SourcesList > $@
 
 %.svg: %.mscgen
 	mscgen -T svg -o $@ $<
@@ -129,11 +132,19 @@ preview:
 %.png: %.gpi
 	gnuplot -e "set term pngcairo transparent size 400,400" $< > $@
 
+ifeq ($(INKSCAPE_VER),0)
 %.png: %.svg
-	inkscape -e $@ $<
+	inkscape --export-dpi 150 -e $@ $<
 
 %.pdf: %.svg
 	inkscape -A $@ $<
+else
+%.png: %.svg
+	inkscape --export-dpi 150 --export-type png -o $@ $<
+
+%.pdf: %.svg
+	inkscape --export-type pdf -o $@ $<
+endif
 
 %.pdf: %.gpi
 	gnuplot -e "set term pdfcairo size 5cm,5cm" $< > $@
@@ -141,4 +152,4 @@ preview:
 %.pdf: %.mscgen
 	mscgen -T eps -o - $< | ps2pdf -dEPSCrop - $@
 
-.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest gettext
+.PHONY: help clean html preview json epub latex latexpdf text man changes linkcheck doctest gettext

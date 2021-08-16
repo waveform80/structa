@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 from math import log
 from itertools import tee
 from datetime import datetime

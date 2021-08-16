@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 from copy import copy
 from numbers import Real
 from datetime import datetime
