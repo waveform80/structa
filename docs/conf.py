@@ -67,7 +67,7 @@ autodoc_mock_imports = [
 # -- Intersphinx options -----------------------------------------------------
 
 intersphinx_mapping = {
-    'python': ('http://docs.python.org/3.8', None),
+    'python': ('http://docs.python.org/3.9', None),
 }
 
 # -- Options for HTML output ----------------------------------------------
