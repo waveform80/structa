@@ -1,13 +1,19 @@
+# structa: an application for analyzing repetitive data structures
+#
+# Copyright (c) 2018-2021 Dave Jones <dave@waveform.org.uk>
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 import warnings
 from math import ceil
 from datetime import datetime, timedelta
-from functools import partial
 from fractions import Fraction
 from collections import Counter, namedtuple
 from itertools import groupby
 
 from dateutil.relativedelta import relativedelta
 
+from .errors import ValidationWarning
 from .conversions import try_conversion
 from .chars import (
     CharClass,
@@ -82,13 +88,6 @@ DIGIT_BASES = {
 DIGITS = set(DIGIT_BASES.values())
 
 
-class ValidationWarning(Warning):
-    """
-    Warning raised when a value fails to validate against the computed pattern
-    or schema.
-    """
-
-
 def flatten(it):
     try:
         for key, value in it.items():
@@ -105,13 +104,68 @@ def flatten(it):
 
 
 class Analyzer:
+    """
+    This class is the core of structa. The various keyword-arguments to the
+    constructor correspond to the command line options (see :doc:`manual`).
+
+    The :meth:`analyze` method is the primary method for analysis, which simply
+    accepts the data to be analyzed. The :meth:`measure` method can be used to
+    perform some pre-processing for the purposes of progress reporting (useful
+    with very large datasets), while :meth:`merge` can be used for additional
+    post-processing to improve the analysis output.
+
+    :param numbers.Rational bad_threshold:
+        The proportion of data within a field (across repetitive structures)
+        which is permitted to be invalid without affecting the type match.
+        Primarily useful with string representations. Valid values are between
+        0 and 1.
+
+    :param numbers.Rational empty_threshold:
+        The proportion of strings within a field (across repetitive structures)
+        which can be blank without affecting the type match. Empty strings
+        falling within this threshold will be discounted by the analysis. Valid
+        values are between 0 and 1.
+
+    :param int field_threshold:
+        The minimum number of fields in a mapping before it will be treated as
+        a "table" (a mapping of keys to records) rather than a record (a
+        mapping of fields to values). Valid values are any positive integer.
+
+    :param numbers.Rational merge_threshold:
+        The proportion of fields within repetitive mappings that must match for
+        the mappings to be considered "mergeable" by the :meth:`merge` method.
+        Note that the proportion is calculated with the length of the *shorter*
+        mapping in the comparision. Valid values are between 0 and 1.
+
+    :param bool strip_whitespace:
+        If :data:`True`, whitespace is stripped from all strings prior to any
+        further analysis.
+
+    :type min_timestamp: datetime.datetime or None
+    :param min_timestamp:
+        The minimum timestamp to use when determining whether floating point
+        values potentially represent epoch-based datetime values.
+
+    :type max_timestamp: datetime.datetime or None
+    :param max_timestamp:
+        The maximum timestamp to use when determining whether floating point
+        values potentially represent epoch-based datetime values.
+
+    :type progress: object or None
+    :param progress:
+        If specificed, must be an object with ``update`` and ``reset`` methods
+        that will be called to provide progress feedback. See :attr:`progress`
+        for further details.
+    """
     def __init__(self, *, bad_threshold=Fraction(2, 100),
                  empty_threshold=Fraction(98, 100), field_threshold=20,
-                 max_numeric_len=30, strip_whitespace=False,
-                 min_timestamp=None, max_timestamp=None, progress=None):
+                 merge_threshold=Fraction(50, 100), max_numeric_len=30,
+                 strip_whitespace=False, min_timestamp=None,
+                 max_timestamp=None, progress=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.field_threshold = field_threshold
+        self.merge_threshold = merge_threshold
         self.max_numeric_len = max_numeric_len
         self.strip_whitespace = strip_whitespace
         now = datetime.now()
@@ -123,19 +177,50 @@ class Analyzer:
         self.max_timestamp = max_timestamp.timestamp()
         self._progress = progress
 
+    @property
+    def progress(self):
+        """
+        The object passed as the *progress* parameter on construction.
+
+        If this is not :data:`None`, it must be an object which implements the
+        following methods:
+
+        * ``reset(*, total: int=None)``
+        * ``update(n: int=None)``
+
+        The "reset" method of the object will be called with either the keyword
+        argument "total", indicating the new number of steps that have yet to
+        complete, or with no arguments indicating the progress display should
+        be cleared as a task is complete.
+
+        The "update" method of the object will be called with either the number
+        of steps to increment by (as the positional "n" argument), or with no
+        arguments indicating that the display should simply be refreshed (e.g.
+        to recalculate the time remaining, or update a time elapsed display).
+
+        It is no coincidence that this is a sub-set of the public API of the
+        `tqdm`_ progress bar project (as that's what structa uses in its CLI
+        implementation).
+
+        .. _tqdm: https://pypi.org/project/tqdm/
+        """
+        return self._progress
+
     def measure(self, data):
         """
-        Given some value *data* (typically an iterable or mapping), construct
-        an object necessary for tracking the progress of the :meth:`analyze`
-        and :meth:`merge` methods. If this is not called prior to these
-        methods, the :attr:`progress` attribute will simply return :data:`None`
-        during their run.
+        Given some value *data* (typically an iterable or mapping), measure the
+        number of items within it, for the purposes of accurately reporting
+        progress during the running of the :meth:`analyze` and :meth:`merge`
+        methods.
 
-        As measurement is itself a potentially lengthy process,
-        :attr:`progress` will be reported as a function of the top-level items
-        within *data* during the run of this method. The value returned can be
-        passed as the optional *progress* argument of :meth:`analyze` and
-        :meth:`merge`.
+        If this is not called prior to these methods, they will still run
+        successfully, but progress tracking (via the :attr:`progress` object)
+        will be inaccurate as the total number of steps to process will never
+        be calculated.
+
+        As measurement is itself a potentially lengthy process, progress will
+        be reported as a function of the top-level items within *data* during
+        the run of this method.
         """
         # For the purposes of providing some progress reporting during
         # measurement of all the ids in *it*, we take the ids of all top
@@ -166,8 +251,8 @@ class Analyzer:
 
     def analyze(self, data):
         """
-        Given some value *data* (typically an iterable or mapping), return a
-        description of its structure.
+        Given some value *data* (typically an iterable or a mapping), return
+        a :class:`~structa.type.Type` descendent describing its structure.
         """
         if self._progress is not None:
             self._progress.reset()
@@ -176,10 +261,14 @@ class Analyzer:
     def merge(self, struct):
         """
         Given some *struct* (as returned by :meth:`analyze`), merge common
-        sub-structures within it, returning the top level structure.
+        sub-structures within it, returning the new top level structure
+        (another :class:`~structa.types.Type` instance).
         """
         if self._progress is not None:
             self._progress.reset()
+        if isinstance(struct, Container):
+            # NOTE this propagates down all subordinate Containers
+            struct.similarity_threshold = self.merge_threshold
         return self._merge(struct)
 
     def _merge(self, path):
@@ -549,20 +638,15 @@ class Analyzer:
         numbers (or timestamps).
         """
         representations = (
-            (partial(
-                Bool.from_strings, bad_threshold=bad_threshold), BOOL_PATTERNS),
-            (partial(
-                Int.from_strings, bad_threshold=bad_threshold), INT_PATTERNS),
-            (partial(
-                Float.from_strings, bad_threshold=bad_threshold), ('f',)),
-            (partial(
-                DateTime.from_strings,
-                bad_threshold=bad_threshold), VAR_DATETIME_PATTERNS),
+            (Bool.from_strings,     BOOL_PATTERNS),
+            (Int.from_strings,      INT_PATTERNS),
+            (Float.from_strings,    ('f',)),
+            (DateTime.from_strings, VAR_DATETIME_PATTERNS),
         )
         for conversion, formats in representations:
             for fmt in formats:
                 try:
-                    return conversion(items, fmt)
+                    return conversion(items, fmt, bad_threshold=bad_threshold)
                 except ValueError:
                     pass
         return None

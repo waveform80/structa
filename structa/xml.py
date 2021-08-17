@@ -1,3 +1,9 @@
+# structa: an application for analyzing repetitive data structures
+#
+# Copyright (c) 2020-2021 Dave Jones <dave@waveform.org.uk>
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 import lxml.etree as et
 from copy import copy
 from pkg_resources import resource_stream
@@ -75,14 +81,14 @@ class ElementFactory:
     conversion to them (except basestring derived types like string and unicode
     which are simply used verbatim).
 
-    For example:
+    For example::
 
-    >>> tostring(tag.a('A link'))
-    '<a>A link</a>'
-    >>> tostring(tag.a('A link', class_='menuitem'))
-    '<a class="menuitem">A link</a>'
-    >>> tostring(tag.p('A ', tag.a('link', class_='menuitem')))
-    '<p>A <a class="menuitem">link</a></p>'
+        >>> tostring(tag.a('A link'))
+        '<a>A link</a>'
+        >>> tostring(tag.a('A link', class_='menuitem'))
+        '<a class="menuitem">A link</a>'
+        >>> tostring(tag.p('A ', tag.a('link', class_='menuitem')))
+        '<p>A <a class="menuitem">link</a></p>'
     """
 
     def __init__(self, namespace=None):

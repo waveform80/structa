@@ -1,3 +1,9 @@
+# structa: an application for analyzing repetitive data structures
+#
+# Copyright (c) 2020-2021 Dave Jones <dave@waveform.org.uk>
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 import os
 import sys
 import argparse
@@ -7,8 +13,10 @@ from fractions import Fraction
 
 from blessings import Terminal
 from tqdm import tqdm
+from pkg_resources import require
 
-from ..analyzer import Analyzer, ValidationWarning
+from ..analyzer import Analyzer
+from ..errors import ValidationWarning
 from ..conversions import parse_duration_or_timestamp
 from ..types import sources_list, SourcesList
 from ..source import Source
@@ -50,6 +58,8 @@ RANGE_CONFIGS = {
 def get_config(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        '--version', action='version', version=require('structa')[0].version)
+    parser.add_argument(
         'file', nargs='*', type=file, default=[sys.stdin.buffer],
         help="The data-file(s) to analyze; if this is - or unspecified then "
         "stdin will be read for the data; if multiple files are specified "
@@ -79,12 +89,17 @@ def get_config(args):
         "instead of being lumped under a generic type like <str> (default: "
         "%(default)s)")
     parser.add_argument(
+        '-M', '--merge-threshold', type=num, metavar='NUM', default='50%',
+        help="The proportion of mapping fields which must match other "
+        "mappings for them to be considered potential merge candidates "
+        "(default: %(default)s)")
+    parser.add_argument(
         '-B', '--bad-threshold', type=num, metavar='NUM', default='1%',
         help="The proportion of string values which are allowed to mismatch "
         "a pattern without preventing the pattern from being reported; the "
         'proportion of "bad" data permitted in a field (default: %(default)s)')
     parser.add_argument(
-        '-E', '--empty-threshold', type=num, metavar='NUM', default='98%',
+        '-E', '--empty-threshold', type=num, metavar='NUM', default='99%',
         help="The proportion of string values permitted to be empty without "
         "preventing the pattern from being reported; the proportion of "
         '"empty" data permitted in a field (default: %(default)s)')
@@ -269,6 +284,7 @@ class MyAnalyzer(Analyzer):
             bad_threshold=config.bad_threshold,
             empty_threshold=config.empty_threshold,
             field_threshold=config.field_threshold,
+            merge_threshold=config.merge_threshold,
             max_numeric_len=config.max_numeric_len,
             strip_whitespace=config.strip_whitespace,
             min_timestamp=config.min_timestamp,

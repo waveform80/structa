@@ -1,3 +1,9 @@
+# structa: an application for analyzing repetitive data structures
+#
+# Copyright (c) 2020-2021 Dave Jones <dave@waveform.org.uk>
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 import io
 import re
 import csv
@@ -5,7 +11,7 @@ import json
 import warnings
 from chardet.universaldetector import UniversalDetector
 
-from .analyzer import ValidationWarning
+from .errors import ValidationWarning
 
 try:
     from ruamel import yaml

@@ -8,7 +8,7 @@ format, or a CSV file of a database dump, or a YAML document.
 
 
 Usage
------
+=====
 
 Use from the command line::
 
@@ -20,50 +20,54 @@ switches!
 
 
 Examples
---------
+========
 
 The `People in Space API`_ shows the number of people currently in space, and
 their names and craft name::
 
-    wget http://api.open-notify.org/astros.json
-    structa astros.json
+    curl -s http://api.open-notify.org/astros.json | structa
 
 Output::
 
     {
-        'message': str pattern=success,
-        'number': int range=7..7,
-        'people': [{'craft': str pattern=ISS, 'name': str}]
+        'message': str range="success" pattern="success",
+        'number': int range=10,
+        'people': [
+            {
+                'craft': str range="ISS".."Tiangong",
+                'name': str range="Akihiko Hoshide".."Thomas Pesquet"
+            }
+        ]
     }
+
 
 The `Python Package Index`_ (PyPI) provides a JSON API for packages::
 
-    wget https://pypi.org/pypi/numpy/json -O numpy.json
-    structa numpy.json
+    curl -s https://pypi.org/pypi/numpy/json | structa
 
 Output::
 
     {
-        'info': {str: value},
-        'last_serial': int range=8.6M..8.6M,
+        'info': { str: value },
+        'last_serial': int range=9.0M,
         'releases': {
-            str: [
+            str range="0.9.6".."1.9.3": [
                 {
                     'comment_text': str,
                     'digests': {
-                        'md5': str pattern=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX,
-                        'sha256': str pattern=...
+                        'md5': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                        'sha256': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                     },
-                    'downloads': int range=-1..-1,
+                    'downloads': int range=-1,
                     'filename': str,
                     'has_sig': bool,
-                    'md5_digest': str pattern=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX,
-                    'packagetype': str,
-                    'python_version': str,
+                    'md5_digest': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                    'packagetype': str range="bdist_wheel".."sdist",
+                    'python_version': str range="2.5".."source",
                     'requires_python': value,
                     'size': int range=1.9M..24.5M,
-                    'upload_time': str of datetime range=2006-12-02 02:07:43..2020-11-02 16:18:20 format=%Y-%m-%dT%H:%M:%S,
-                    'upload_time_iso_8601': str of datetime range=2009-04-06 06:19:25+00:00..2020-11-02 16:18:20+00:00 format=%Y-%m-%dT%H:%M:%S.%f%z,
+                    'upload_time': str of timestamp range=2006-12-02 02:07:43..2020-12-25 03:30:00 pattern=%Y-%m-%dT%H:%M:%S,
+                    'upload_time_iso_8601': str of timestamp range=2009-04-06 06:19:25..2020-12-25 03:30:00 pattern=%Y-%m-%dT%H:%M:%S.%f%z,
                     'url': URL,
                     'yanked': bool,
                     'yanked_reason': value
@@ -72,21 +76,21 @@ Output::
         },
         'urls': [
             {
-                'comment_text': str,
+                'comment_text': str range="",
                 'digests': {
-                    'md5': str pattern=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX,
-                    'sha256': str pattern=...
+                    'md5': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                    'sha256': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 },
-                'downloads': int range=-1..-1,
+                'downloads': int range=-1,
                 'filename': str,
                 'has_sig': bool,
-                'md5_digest': str pattern=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX,
-                'packagetype': str pattern=bdist_wheel,
-                'python_version': str pattern=.p3D,
-                'requires_python': str pattern=>=3.6,
+                'md5_digest': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                'packagetype': str range="bdist_wheel" pattern="bdist_wheel",
+                'python_version': str range="cp36".."pp36" pattern="Ip3d",
+                'requires_python': str range="&gt;=3.6" pattern="&gt;=3.6",
                 'size': int range=7.3M..15.4M,
-                'upload_time': str of datetime range=2020-11-02 15:46:22..2020-11-02 16:18:20 format=%Y-%m-%dT%H:%M:%S,
-                'upload_time_iso_8601': str of datetime range=2020-11-02 15:46:22+00:00..2020-11-02 16:18:20+00:00 format=%Y-%m-%dT%H:%M:%S.%f%z,
+                'upload_time': str of timestamp range=2020-11-02 15:46:22..2020-11-02 16:18:20 pattern=%Y-%m-%dT%H:%M:%S,
+                'upload_time_iso_8601': str of timestamp range=2020-11-02 15:46:22..2020-11-02 16:18:20 pattern=%Y-%m-%dT%H:%M:%S.%f%z,
                 'url': URL,
                 'yanked': bool,
                 'yanked_reason': value
@@ -98,37 +102,45 @@ The `Ubuntu Security Notices`_ database contains the list of all security
 issues in releases of Ubuntu (warning, this one takes some time to analyze and
 eats about a gigabyte of RAM while doing so)::
 
-    wget https://usn.ubuntu.com/usn-db/database.json
-    structa database.json
+    curl -s https://usn.ubuntu.com/usn-db/database.json | structa
 
 Output::
 
     {
-        str pattern=DDDD-D: {
-            'action'*: str,
-            'cves': [str],
+        str range="1430-1".."4630-1" pattern="dddd-d": {
+            'action'?: str,
+            'cves': [ str ],
             'description': str,
-            'id': str pattern=DDDD-D,
-            'isummary'*: str,
+            'id': str range="1430-1".."4630-1" pattern="dddd-d",
+            'isummary'?: str,
             'releases': {
-                str: {
-                    'allbinaries'*: {str: {'version': str}},
-                    'archs'*: {
-                        str: {
+                str range="artful".."zesty": {
+                    'allbinaries'?: {
+                        str: { 'version': str }
+                    },
+                    'archs'?: {
+                        str range="all".."source": {
                             'urls': {
                                 URL: {
-                                    'md5': str pattern=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX,
-                                    'size': int range=808..577.2M
+                                    'md5': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                                    'size': int range=20..1.2G
                                 }
                             }
                         }
                     },
-                    'binaries': {str: {'version': str}},
-                    'sources': {str: {'description': str, 'version': str}}
+                    'binaries': {
+                        str: { 'version': str }
+                    },
+                    'sources': {
+                        str: {
+                            'description': str,
+                            'version': str
+                        }
+                    }
                 }
             },
             'summary': str,
-            'timestamp': float of datetime range=2012-04-27 12:57:41..2020-11-11 18:01:48,
+            'timestamp': float of timestamp range=2012-04-27 12:57:41..2020-11-11 18:01:48,
             'title': str
         }
     }

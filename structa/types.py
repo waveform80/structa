@@ -1,3 +1,9 @@
+# structa: an application for analyzing repetitive data structures
+#
+# Copyright (c) 2018-2021 Dave Jones <dave@waveform.org.uk>
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 from copy import copy
 from numbers import Real
 from datetime import datetime
@@ -55,8 +61,9 @@ class Stats:
             # Cannot calculate a 1d quartile graph for vectors like str; note
             # that we use subtraction for this test because simply testing if
             # min/max are numbers is not sufficient. Timestamps can be
-            # subtracted (and, crucially, divided to produce a float) but do
-            # not count as numbers in Python's number hierarchy
+            # subtracted (likewise durations which can furthermore be divided
+            # to produce a float), but do not count as numbers in Python's
+            # number hierarchy
             graph = ''
         else:
             if delta:
@@ -212,6 +219,8 @@ class Container(Type):
 
     @similarity_threshold.setter
     def similarity_threshold(self, value):
+        # FIXME this propagation should be done externally to permit fine
+        # grained control of this property should users require it
         self._similarity_threshold = value
         for item in self.content:
             if isinstance(item, (TupleField, DictField)):
@@ -959,6 +968,7 @@ class Empty(Type):
                 other.optional = True
             return other
         if isinstance(other, Type):
+            # XXX Handle changing Field.optional to True
             return other
         return NotImplemented
 

@@ -1,3 +1,9 @@
+# structa: an application for analyzing repetitive data structures
+#
+# Copyright (c) 2020-2021 Dave Jones <dave@waveform.org.uk>
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 import re
 
 from dateutil.parser import parse
@@ -91,7 +97,7 @@ _SUFFIXES = [
     ('minutes',      'mi(n(ute)?s?)?'),
     ('hours',        'h((ou)?rs?)?'),
     ('days',         'd(ays?)?'),
-    ('weeks',        'w(eeks?)?'),
+    ('weeks',        'w((ee)?ks?)?'),
     ('months',       'm(on(th)?s?)?'),
     ('years',        'y((ea)?rs?)?'),
 ]
@@ -102,6 +108,49 @@ _SPANS = [
 
 
 def parse_duration(s):
+    """
+    Convert the string *s* to a :class:`~dateutil.relativedelta.relativedelta`.
+    The string must consist of white-space and/or comma separated values which
+    are a number followed by a suffix indicating duration. For example:
+
+        >>> parse_duration('1s')
+        relativedelta(seconds=+1)
+        >>> parse_duration('5 minutes, 30 seconds')
+        relativedelta(minutes=+5, seconds=+30)
+        >>> parse_duration('1 year')
+        relativedelta(years=+1)
+
+    Note that some suffixes like "m" can be ambiguous; using common
+    abbreviations should avoid ambiguity:
+
+        >>> parse_duration('1 m')
+        relativedelta(months=+1)
+        >>> parse_duration('1 min')
+        relativedelta(minutes=+1)
+        >>> parse_duration('1 mon')
+        relativedelta(months=+1)
+
+    The set of possible durations, and their recognized suffixes is as follows:
+
+    * *Microseconds*: microseconds, microsecond, microsec, micros, micro,
+      mseconds, msecond, msecs, msec, ms
+
+    * *Seconds*: seconds, second, secs, sec, s
+
+    * *Minutes*: minutes, minute, mins, min, mi
+
+    * *Hours*: hours, hour, hrs, hr, h
+
+    * *Days*: days, day, d
+
+    * *Weeks*: weeks, week, wks, wk, w
+
+    * *Months*: months, month, mons, mon, mths, mth, m
+
+    * *Years*: years, year, yrs, yr, y
+
+    If conversion fails, :exc:`ValueError` is raised.
+    """
     spans = {span: 0 for span, regex in _SPANS}
     t = s
     while True:
@@ -122,6 +171,12 @@ def parse_duration(s):
 
 
 def parse_duration_or_timestamp(s):
+    """
+    Convert the string *s* to a :class:`~datetime.datetime` or a
+    :class:`~dateutil.relativedelta.relativedelta`. Duration conversion is
+    attempted to and, if this fails, date-time conversion is attempted. A
+    :exc:`ValueError` is raised if both conversions fail.
+    """
     try:
         return parse_duration(s)
     except ValueError:
