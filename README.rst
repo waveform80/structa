@@ -8,7 +8,7 @@ format, or a CSV file of a database dump, or a YAML document.
 
 
 Usage
------
+=====
 
 Use from the command line::
 
@@ -20,31 +20,30 @@ switches!
 
 
 Examples
---------
+========
 
 The `People in Space API`_ shows the number of people currently in space, and
 their names and craft name::
 
-    wget http://api.open-notify.org/astros.json
-    structa astros.json
+    curl -s http://api.open-notify.org/astros.json | structa
 
 Output::
 
     {
         'message': str range="success" pattern="success",
-        'number': int range=7,
+        'number': int range=10,
         'people': [
             {
-                'craft': str range="ISS" pattern="ISS",
-                'name': str range="Kate Rubins".."Victor Glover"
+                'craft': str range="ISS".."Tiangong",
+                'name': str range="Akihiko Hoshide".."Thomas Pesquet"
             }
         ]
     }
 
+
 The `Python Package Index`_ (PyPI) provides a JSON API for packages::
 
-    wget https://pypi.org/pypi/numpy/json -O numpy.json
-    structa numpy.json
+    curl -s https://pypi.org/pypi/numpy/json | structa
 
 Output::
 
@@ -103,8 +102,7 @@ The `Ubuntu Security Notices`_ database contains the list of all security
 issues in releases of Ubuntu (warning, this one takes some time to analyze and
 eats about a gigabyte of RAM while doing so)::
 
-    wget https://usn.ubuntu.com/usn-db/database.json
-    structa database.json
+    curl -s https://usn.ubuntu.com/usn-db/database.json | structa
 
 Output::
 
