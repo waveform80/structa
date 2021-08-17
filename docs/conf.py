@@ -119,7 +119,7 @@ epub_show_urls = 'no'
 
 man_pages = [
     (
-        metadata['name'],
+        'manual',
         metadata['name'],
         '{project} Utility'.format(project=project),
         [metadata['author']],
