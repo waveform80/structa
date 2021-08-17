@@ -11,6 +11,12 @@ Changelog
 .. currentmodule:: structa
 
 
+Release 0.2.1 (2021-08-17 ... later)
+====================================
+
+* It'd help if you included the XSL for the UI ...
+
+
 Release 0.2 (2021-08-17)
 ========================
 
