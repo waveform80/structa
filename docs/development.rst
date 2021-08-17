@@ -133,8 +133,8 @@ report of coverage from all environments:
 .. code-block:: console
 
     $ tox -p auto -s
-    $ coverage combine --rcfile coverage.cfg
-    $ coverage report --rcfile coverage.cfg
+    $ coverage combine .coverage.py*
+    $ coverage report
 
 
 .. _Dead Snakes PPA: https://launchpad.net/~deadsnakes/%2Barchive/ubuntu/ppa
