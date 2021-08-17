@@ -432,7 +432,7 @@ def test_datetime_numrepr():
     assert pattern == NumRepr(DateTime(Counter(data)), pattern=Int)
     assert pattern.validate(1000)
     assert not pattern.validate('1000')
-    assert not pattern.validate(1000000000000)
+    assert not pattern.validate(2000000000)
     assert not pattern.validate(1200000)
 
 
@@ -447,7 +447,7 @@ def test_datetime_strrepr_numrepr():
     pattern = DateTime.from_numbers(numbers)
     assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=Int), pattern='d')
     assert pattern.validate('1000')
-    assert not pattern.validate('1000000000000')
+    assert not pattern.validate('2000000000')
     assert not pattern.validate('foo')
 
     numbers = StrRepr(Float(Counter(d.timestamp() for d in data)), pattern='f')
@@ -455,7 +455,7 @@ def test_datetime_strrepr_numrepr():
     assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=Float), pattern='f')
     assert pattern.validate('1000')
     assert pattern.validate('1000.0')
-    assert not pattern.validate('1e12')
+    assert not pattern.validate('1e9')
     assert not pattern.validate('foo')
 
 
