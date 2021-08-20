@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import math
 from copy import copy
 from numbers import Real
 from datetime import datetime
@@ -203,6 +204,10 @@ class Type:
                 return True
         return NotImplemented
 
+    @property
+    def size(self):
+        return 0
+
 
 class Container(Type):
     __slots__ = ('lengths', 'content', '_similarity_threshold')
@@ -212,21 +217,6 @@ class Container(Type):
         self.lengths = Stats.from_lengths(sample)
         self.content = content
         self._similarity_threshold = similarity_threshold
-
-    @property
-    def similarity_threshold(self):
-        return self._similarity_threshold
-
-    @similarity_threshold.setter
-    def similarity_threshold(self, value):
-        # FIXME this propagation should be done externally to permit fine
-        # grained control of this property should users require it
-        self._similarity_threshold = value
-        for item in self.content:
-            if isinstance(item, (TupleField, DictField)):
-                item = item.value
-            if isinstance(item, Container):
-                item.similarity_threshold = value
 
     def __repr__(self):
         return format_repr(self, lengths=None, _similarity_threshold=None)
@@ -242,10 +232,7 @@ class Container(Type):
         # The Stats lengths attribute is ignored as it has no bearing on the
         # actual structure itself
         if super().__eq__(other) is True:
-            return some(
-                (a == b for a, b in self._zip(other)),
-                min(len(self.content), len(other.content)) *
-                1 - self.similarity_threshold)
+            return all(a == b for a, b in self._zip(other))
         return NotImplemented
 
     def __add__(self, other):
@@ -272,6 +259,25 @@ class Container(Type):
 
     __hash__ = Type.__hash__
 
+    @property
+    def size(self):
+        return sum(item.size for item in self.content) + 1
+
+    @property
+    def similarity_threshold(self):
+        return self._similarity_threshold
+
+    @similarity_threshold.setter
+    def similarity_threshold(self, value):
+        # FIXME this propagation should be done externally to permit fine
+        # grained control of this property should users require it
+        self._similarity_threshold = value
+        for item in self.content:
+            if isinstance(item, (TupleField, DictField)):
+                item = item.value
+            if isinstance(item, Container):
+                item.similarity_threshold = value
+
 
 class Dict(Container):
     __slots__ = ()
@@ -294,13 +300,16 @@ class Dict(Container):
     def __add__(self, other):
         result = super().__add__(other)
         if isinstance(result, Dict):
-            # XXX Is this strictly necessary?
+            # XXX Need to handle merge of Scalar+Field
             # FIXME this won't work with all possible keys
             result.content = sorted(result.content, key=attrgetter('key'))
         return result
 
     def _zip(self, other):
-        return zip_dict_fields(self.content, other.content)
+        # XXX What about other.similarity_threshold? It's not variable
+        # currently but worth considering for future
+        return zip_dict_fields(self.content, other.content,
+                               similarity_threshold=self.similarity_threshold)
 
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
@@ -339,6 +348,10 @@ class DictField(Type):
                 self.value == other.value)
         return NotImplemented
 
+    @property
+    def size(self):
+        return self.key.size + self.value.size
+
 
 class Tuple(Container):
     __slots__ = ()
@@ -359,7 +372,10 @@ class Tuple(Container):
         return tag.tuple(iter(super().__xml__()))
 
     def _zip(self, other):
-        return zip_tuple_fields(self.content, other.content)
+        # XXX What about other.similarity_threshold? It's not variable
+        # currently but worth considering for future
+        return zip_tuple_fields(self.content, other.content,
+                                similarity_threshold=self.similarity_threshold)
 
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
@@ -400,6 +416,10 @@ class TupleField(Type):
                 other.value is not None and
                 self.value == other.value)
         return NotImplemented
+
+    @property
+    def size(self):
+        return self.index.size + self.value.size
 
 
 class List(Container):
@@ -466,6 +486,10 @@ class Scalar(Type):
 
     def __repr__(self):
         return format_repr(self, values='...')
+
+    @property
+    def size(self):
+        return 1
 
 
 class Float(Scalar):
@@ -628,7 +652,8 @@ class Str(Scalar):
         )
 
     def __add__(self, other):
-        if self == other:
+        # See notes in Container.__add__
+        if self.__eq__(other) is True:
             if (
                 self.pattern is None or other.pattern is None or
                 len(self.pattern) != len(other.pattern)
@@ -684,6 +709,10 @@ class Repr(Type):
     @property
     def values(self):
         return self.content.values
+
+    @property
+    def size(self):
+        return 1
 
 
 class StrRepr(Repr):
@@ -871,24 +900,49 @@ class Field(Type):
     def __xml__(self):
         return tag.key(repr(self.value), optional=self.optional)
 
-    def __add__(self, other):
-        if self == other:
-            return Field(self.value, self.count + other.count,
-                         self.optional or other.optional)
-        return NotImplemented
-
     __hash__ = Type.__hash__
 
     def __eq__(self, other):
-        # We deliberately exclude *optional* from consideration here; the
-        # only time a Field is compared is during common sub-tree
-        # elimination where a key might be mandatory in one sub-set but
-        # optional in another
         if isinstance(other, Field):
+            # We deliberately exclude *optional* from consideration here; the
+            # only time a Field is compared is during common sub-tree
+            # elimination where a key might be mandatory in one sub-set but
+            # optional in another
             return (
                 super().__eq__(other) is True and
                 self.value == other.value)
+        elif isinstance(other, Type):
+            # When comparing a Field against another Type we're only interested
+            # in whether the field is mergeable against that type. For example,
+            # the cast where one mapping has fewer than field_threshold entries
+            # and is treated as a record, while a sibling mapping has more than
+            # field_threshold entries and is treated as a table (keyed by str).
+            # In this case the Field entries must be successfully comparable to
+            # Str
+            return other.validate(self.value)
         return NotImplemented
+
+    def __add__(self, other):
+        # See notes in Container.__add__
+        if self.__eq__(other) is True:
+            if isinstance(other, Field):
+                return Field(self.value, self.count + other.count,
+                             self.optional or other.optional)
+            elif isinstance(other, Scalar):
+                # In the case (discussed in Field.__eq__ above) where we're
+                # being merged with (say) a Str instance, the result is simply
+                # a new Str instance with the combined samples
+                result = copy(other)
+                sample = FrozenCounter({self.value: self.count})
+                result.values = other.values + Stats.from_sample(sample)
+                return result
+            elif isinstance(other, Tuple):
+                result = copy(other)
+                sample = FrozenCounter({len(self.value): self.count})
+                result.lengths = other.lengths + Stats.from_sample(sample)
+        return NotImplemented
+
+    __radd__ = __add__
 
     def __lt__(self, other):
         # XXX This is largely a fudge. The only reason it is included is to
@@ -905,6 +959,10 @@ class Field(Type):
 
     def validate(self, value):
         return value == self.value
+
+    @property
+    def size(self):
+        return 1
 
 
 class Value(Type):
@@ -943,6 +1001,10 @@ class Value(Type):
     def validate(self, value):
         return True
 
+    @property
+    def size(self):
+        return 1
+
 
 class Empty(Type):
     __slots__ = ()
@@ -968,7 +1030,6 @@ class Empty(Type):
                 other.optional = True
             return other
         if isinstance(other, Type):
-            # XXX Handle changing Field.optional to True
             return other
         return NotImplemented
 
@@ -984,7 +1045,12 @@ class Empty(Type):
         return tag.empty()
 
     def validate(self, value):
-        return False
+        # This counter-intuitive result is because the Empty value indicates a
+        # lack of type-information rather than a definitely empty container
+        # (after all, there's usually little sense in having a container field
+        # which will always be empty in most hierarchical structures). The way
+        # this differs from Value is in the additive action.
+        return True
 
 
 _empty = Empty()
@@ -992,57 +1058,54 @@ _value = Value()
 
 
 def zip_tuple_fields(it1, it2):
-    # FIXME what about the empty cases?
-    if it1[0].index is not _empty and it2[0].index is not _empty:
-        yield from zip(it1, it2)
-
-
-def zip_dict_fields(it1, it2):
-    if it1[0].key is _empty or it2[0].key is _empty:
-        pass
-    elif it1[0].key is _value:
-        for item in it2:
-            yield it1[0], item
-    elif it2[0].key is _value:
-        for item in it1:
-            yield item, it2[0]
+    indexes1 = {item.index: item for item in it1}
+    indexes2 = {item.index: item for item in it2}
+    common_indexes = indexes1.keys() & indexes2.keys()
+    minimum_common = similarity_threshold * min(len(indexes1), len(indexes2))
+    if len(common_indexes) > minimum_common:
+        for index in common_indexes:
+            yield indexes1[index], indexes2[index]
+        for index in indexes1.keys() - indexes2.keys():
+            yield indexes1[index], TupleField(index, _empty)
+        for index in indexes2.keys() - indexes1.keys():
+            yield TupleField(index, _empty), indexes2[index]
     else:
-        fields1 = {item.key: item for item in it1}
-        fields2 = {item.key: item for item in it2}
-        all_fields1 = all(isinstance(key, Field) for key in fields1)
-        all_fields2 = all(isinstance(key, Field) for key in fields2)
-        if all_fields1 == all_fields2:
-            for key in fields1.keys() & fields2.keys():
+        for index1 in indexes1.values():
+            yield index1, None
+        for index2 in indexes2.values():
+            yield None, index2
+
+
+def zip_dict_fields(it1, it2, *, similarity_threshold=1):
+    fields1 = {item.key: item for item in it1}
+    fields2 = {item.key: item for item in it2}
+    all_fields1 = all(isinstance(key, Field) for key in fields1)
+    all_fields2 = all(isinstance(key, Field) for key in fields2)
+    if all_fields1 and all_fields2:
+        common_keys = fields1.keys() & fields2.keys()
+        minimum_common = similarity_threshold * min(len(fields1), len(fields2))
+        if len(common_keys) >= math.ceil(minimum_common):
+            for key in common_keys:
                 yield fields1[key], fields2[key]
             for key in fields1.keys() - fields2.keys():
-                field2 = DictField(Field(key.value, count=0, optional=True),
-                                   _empty)
-                yield fields1[key], field2
+                yield fields1[key], DictField(_empty, _empty)
             for key in fields2.keys() - fields1.keys():
-                field1 = DictField(Field(key.value, count=0, optional=True),
-                                   _empty)
-                yield field1, fields2[key]
-        elif all_fields1:
-            remaining = fields1.copy()
-            for key_type in fields2:
-                for key in fields1:
-                    if key_type.validate(key.value):
-                        yield fields1[key], fields2[key_type]
-                        del remaining[key]
-            for field1 in remaining.values():
-                field2 = DictField(
-                    Field(field1.key.value, count=0, optional=True), _empty)
-                yield field1, field2
-        elif all_fields2:
-            remaining = fields2.copy()
-            for key_type in fields1:
-                for key in fields2:
-                    if key_type.validate(key.value):
-                        yield fields1[key_type], fields2[key]
-                        del remaining[key]
-            for field2 in remaining.values():
-                field1 = DictField(
-                    Field(field2.key.value, count=0, optional=True), _empty)
-                yield field1, field2
+                yield DictField(_empty, _empty), fields2[key]
         else:
-            assert False
+            for field1 in fields1.values():
+                yield field1, None
+            for field2 in fields2.values():
+                yield None, field2
+    elif all_fields1 and not all_fields2:
+        assert len(fields2) == 1
+        for key_type in fields2:
+            for key in fields1:
+                yield fields1[key], fields2[key_type]
+    elif not all_fields1 and all_fields2:
+        assert len(fields1) == 1
+        for key_type in fields1:
+            for key in fields2:
+                yield fields1[key_type], fields2[key]
+    else: # if not all_fields1 and not all_fields2:
+        assert len(fields1) == len(fields2) == 1
+        yield it1[0], it2[0]

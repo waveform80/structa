@@ -228,7 +228,7 @@ def get_structure(config):
             progress.set_description(
                 'Merging common structures (pass {})'.format(n))
             result = analyzer.merge(struct)
-            if result == struct:
+            if result.size == struct.size:
                 break
             else:
                 struct = result
