@@ -187,6 +187,21 @@ def test_source_detect_csv(tmpdir, table):
         assert Source(f).format == 'csv'
 
 
+def test_source_detect_yaml_missing(tmpdir):
+    with mock.patch('structa.source.yaml', None):
+        filename = str(tmpdir.join('data.yaml'))
+        with open(filename, 'w') as f:
+            f.write("""\
+structa:
+  language: Python
+  versions: 3.5, 3.6, 3.7, 3.8
+  os: all
+""")
+        with open(filename, 'rb') as f:
+            with pytest.raises(ImportError):
+                Source(f).data
+
+
 def test_source_detect_yaml(tmpdir):
     filename = str(tmpdir.join('data.yaml'))
     with open(filename, 'w') as f:
