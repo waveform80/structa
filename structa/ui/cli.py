@@ -195,6 +195,13 @@ def get_config(args):
         help='Controls whether the "safe" or "unsafe" YAML loader is used '
         'to parse YAML files. The default is the "safe" parser. Only use '
         "--no-yaml-safe if you trust the source of your data")
+    parser.add_argument(
+        '--json-strict', action='store_true', default=True)
+    parser.add_argument(
+        '--no-json-strict', action='store_false', dest='json_strict',
+        help="Controls whether the JSON decoder permits control characters "
+        "within strings, which isn't technically valid JSON. The default is "
+        "to be strict and disallow such characters")
 
     parser.set_defaults(sample=b'', csv_dialect=None)
     return parser.parse_args(args)
@@ -305,6 +312,7 @@ class MySource(Source):
             csv_quotechar='auto' if config.csv_format == 'auto' else
                           config.csv_format[1:],
             yaml_safe=config.yaml_safe,
+            json_strict=config.json_strict,
             sample_limit=config.sample_bytes)
 
 

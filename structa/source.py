@@ -22,7 +22,7 @@ except ImportError:
 class Source:
     def __init__(self, source, *, encoding='auto', encoding_strict=True,
                  format='auto', csv_delimiter='auto', csv_quotechar='auto',
-                 yaml_safe=True, sample_limit=1048576):
+                 yaml_safe=True, json_strict=True, sample_limit=1048576):
         self._source = source
         self._encoding = encoding
         self._encoding_strict = encoding_strict
@@ -31,6 +31,7 @@ class Source:
         self._csv_quotechar = csv_quotechar
         self._csv_dialect = None
         self._yaml_safe = yaml_safe
+        self._json_strict = json_strict
         self._sample_limit = sample_limit
         self._sample = b''
         self._data = None
@@ -170,7 +171,7 @@ class Source:
             errors='strict' if self._encoding_strict else 'replace')
 
         if self.format == 'json':
-            self._data = json.loads(data)
+            self._data = json.loads(data, strict=self._json_strict)
         elif self.format == 'csv':
             # Exclude the first row of data from analysis in case it's a header
             data = data.splitlines(keepends=True)[1:]
