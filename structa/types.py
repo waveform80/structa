@@ -1054,7 +1054,6 @@ class Empty(Type):
 
 
 _empty = Empty()
-_value = Value()
 
 
 def zip_tuple_fields(it1, it2, *, similarity_threshold=1):

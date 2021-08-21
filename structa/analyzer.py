@@ -477,9 +477,9 @@ class Analyzer:
                         yield from self._extract(value, tail)
                     else:
                         # XXX Can this ever get triggered?
-                        warnings.warn(ValidationWarning(
+                        assert False, (
                             "failed to validate field {field} against {head!r}"
-                            .format(field=field, head=head)))
+                            .format(field=field, head=head))
         else:
             yield from range(len(it))
 

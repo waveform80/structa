@@ -42,6 +42,7 @@ def test_flatten():
 def test_analyze_progress_trivial():
     progress = mock.Mock()
     a = Analyzer(bad_threshold=0, progress=progress)
+    assert a.progress is progress
     data = 10
     a.measure(data)
     assert progress.reset.call_args == mock.call(total=1)
@@ -55,12 +56,34 @@ def test_analyze_progress_trivial():
 def test_analyze_progress():
     progress = mock.Mock()
     a = Analyzer(bad_threshold=0, progress=progress)
-    data = list(range(1000))
+    data = [
+        {'number': i}
+        for i in range(1000)
+    ]
     a.measure(data)
-    assert progress.reset.call_args == mock.call(total=1001)
+    assert progress.reset.call_args == mock.call(total=3001)
     assert progress.update.called
     progress.reset_mock()
-    a.analyze(data)
+    a.merge(a.analyze(data))
+    assert progress.reset.call_args == mock.call()
+    assert progress.update.called
+
+
+def test_analyze_progress_partial():
+    progress = mock.Mock()
+    a = Analyzer(bad_threshold=0, progress=progress)
+    data = [
+        # Should be analyzed as { str: value } -- value cannot be counted by
+        # the progress measurement as it doesn't store samples of the original
+        # (because we can't guarantee they're hashable)
+        {'number': i if i % 2 else str(i)}
+        for i in range(1000)
+    ]
+    a.measure(data)
+    assert progress.reset.call_args == mock.call(total=3001)
+    assert progress.update.called
+    progress.reset_mock()
+    a.merge(a.analyze(data))
     assert progress.reset.call_args == mock.call()
     assert progress.update.called
 
@@ -569,6 +592,15 @@ def test_analyze_value():
         __hash__ = None
     data = [Foo(), Foo(), Foo()]
     assert Analyzer().analyze(data) == List(sample=[data], content=[Value()])
+
+
+def test_analyze_merge_trivial():
+    data = 10
+    a = Analyzer(bad_threshold=0)
+    struct = a.analyze(data)
+    merged = a.merge(struct)
+    assert struct == Int(sample=[data])
+    assert struct == merged
 
 
 def test_analyze_merge():
