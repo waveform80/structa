@@ -191,6 +191,12 @@ processing. Hence, when we re-run this script with the setting turned down to
     "100" value, but because it's now considered a string (not a string of
     integers), "100" sorts before "99" alphabetically.
 
+It is also worth nothing that, by default, structa strips whitespace from
+strings prior to analysis. This is probably not necessary for the vast majority
+of modern datasets, but it's a reasonably safe default, and can be controlled
+with the :option:`structa --strip-whitespace` and :option:`structa
+--no-strip-whitespace` options in any case.
+
 
 Fields or Tables (``--field-threshold``)
 ========================================
@@ -278,15 +284,178 @@ mappings are also treated as a table?
     }
 
 The inner mappings are now defined simply as mappings of strings (in the range
-"bar" to "id", sorted alphabetically) which map to "value" (an arbitrary mix of
-types). Anytime you see a mapping of ``{ str: value }`` in structa's output,
-it's a *fairly* good clue that :option:`structa --field-threshold` might be
-too low.
+"flight_id" to "passengers", sorted alphabetically) which map to "value" (an
+arbitrary mix of types). Anytime you see a mapping of ``{ str: value }`` in
+structa's output, it's a *fairly* good clue that :option:`structa
+--field-threshold` might be too low.
 
 
-Merging structures (``--merge-threshold``)
+Merging Structures (``--merge-threshold``)
 ==========================================
 
+The final major knob available for twiddling is the :option:`structa
+--merge-threshold` which dictates how similar record mappings have to be in
+order to be considered for merging. This only applies to mappings at the same
+"level" with similar (but not necessarily perfectly identical) structures.
 
-Whitespace
+To illustrate, consider the following example script:
+
+.. literalinclude:: examples/merge-dicts.py
+   :caption: merge-dicts.py
+
+In keeping with the prior examples, this generates a list of airports with
+associated statistics. When we run the results through structa they seem to
+produce sensible output:
+
+.. code-block:: console
+
+    $ python3 merge-dicts.py | structa
+    {
+        str range="ABZ".."ORK" pattern="Iii": {
+            'cargo'?: int range=55.0K..949.1K,
+            'code': str range="ABZ".."ORK" pattern="[A-EL-MO][A-EHMORU][IK-LNR-SUXZ]",
+            'facilities': [ str range="Bus Station".."WiFi" ],
+            'movements'?: int range=10.0K..295.7K,
+            'passengers': int range=1.0M..24.9M,
+            'terminals'?: int range=2..4
+        }
+    }
+
+However, there are several things to note about the data:
+
+* The number of top-level entries (the airport codes) is less than the default
+  field threshold (20). This means that the "outer" mapping will initially be
+  treated as a record rather than a table (see the explanation of
+  ``--field-threshold`` above).
+
+* In some entries, statistics are missing. When "terminals" would be 1, it's
+  excluded, and 30% and 10% of entries will be missing their "movements" and
+  "cargo" stats respectively.
+
+* The "code", "facilities", and "passengers" entries are *always* present out
+  of a total of 6 fields that *could* be present. This means that at least 50%
+  of all the fields are guaranteed to be present, which is the default level of
+  ``--merge-threshold``.
+
+As noted above, structa's initial pass will treat the outer mapping as a record
+so each airport will be analyzed as a separate entity. After this phase a first
+merge pass will run, which will compare all the airport records. After
+concluding that all contain at least 50% of the same fields as the rest, and
+that all field values found are compatible, those rows will be merged. What
+happens if we raise the merge threshold to 100%, which would require that every
+single airport record shared exactly the same fields?
+
+.. code-block:: console
+
+    $ python3 docs/examples/merge-dicts.py | structa --merge-threshold 100%
+    {
+        'ABZ': {
+            'cargo': int range=192.6K,
+            'code': str range="ABZ" pattern="ABZ",
+            'facilities': [ str range="Bus Station".."WiFi" ],
+            'passengers': int range=27.5M,
+            'terminals': int range=4
+        },
+        'AMS': {
+            'cargo': int range=606.4K,
+            'code': str range="AMS" pattern="AMS",
+            'facilities': [ str range="Bus Station".."WiFi" ],
+            'movements': int range=132.5K,
+            'passengers': int range=4.8M,
+            'terminals': int range=3
+        },
+        'AUS': {
+            'cargo': int range=607.4K,
+            'code': str range="AUS" pattern="AUS",
+            'facilities': [ str range="Bus Station".."WiFi" ],
+            'movements': int range=212.2K,
+            'passengers': int range=13.7M
+        },
+        ...
+
+A whole lot of output! When you get excessively large output consisting of
+largely (but not completely) similar records, it's a reasonable sign that
+:option:`structa --merge-threshold` is set too high.
+
+That said, the merge threshold is fairly forgiving. The specific algorithm used
+is as follows:
+
+* For two given mappings, find the length (number of fields) of the shortest
+  mapping.
+
+* Calculate the minimum required number of common fields as the merge threshold
+  percentage of the shortest length. For example, if the shortest mapping
+  contains 8 fields, and the merge threshold is 50%, then there must be at
+  least 4 common fields.
+
+* Note that in the case that one side is an empty mapping this will *always*
+  permit the match as at least 0 common fields will be required percentage of
+  the shortest length.
+
+
+Other Switches
+==============
+
+There are quite a few other switches in structa, but all are less important
+than the four covered in the prior sections. The rest largely have to do with
+specific formats (:option:`structa --csv-format` for CSV files,
+:option:`structa --no-json-strict` for JSON files), the character encoding of
+files (:option:`structa --encoding`, :option:`structa --encoding-strict`), or
+tweaking the style of the output (:option:`structa --show-count`,
+:option:`structa --show-lengths`).
+
+Integer Handling
+----------------
+
+However, there are a couple that may be important for specific types of data.
+The first is :option:`structa --max-numeric-len` which dictates the maximum
+number of digits structa will consider as a number. This defaults to 30 which
+is more than sufficient to represent all 64-bit integer values (which only
+require 20 digits), with some lee-way for data that includes large integers
+(which Python handles happily).
+
+However, the default is deliberately lower than 32 because at that point, data
+which includes hex-encoded hash values (`MD5`_, `SHA1`_, etc.) typically wind
+up mis-representing those hashes as literal integers (which, technically, they
+are, but that's not typically how users wish hash values to be interpreted).
+
+Date Handling
+-------------
+
+The other important switches are those used in the detection of dates encoded
+as numbers: :option:`structa --min-timestamp` and :option:`structa
+--max-timestamp`. When dates are encoded as (potentially fractional)
+day-offsets from the UNIX epoch (the 1st January, 1970), how does structa
+determine that it's looking at a set of dates rather than a set of numbers?
+
+In a typical set of (arbitrary) numbers, it's quite normal to find "0" or "1"
+commonly represented, or for the set of numbers to span over a large range
+(consider file-sizes which might span over millions or billions of bytes).
+However, most date-based sets, *don't* tend to include values around the 1st or
+2nd of January, 1970 (most data that's dealt with is, to some degree, fairly
+contemporary), and moreover tends to cluster around values that vary by no more
+than a few thousand (after all 3000 is enough to represent nearly a decade's
+worth of days).
+
+Thus if we find that all numbers in a given set fall within some "reasonable"
+limits (structa defaults to 20 years prior, and 10 years after the current
+date) it's a *reasonable guess* that we're looking at dates encoded as numbers
+rather than an arbitrary set of numbers.
+
+
+Conclusion
 ==========
+
+At this point, you should have a pretty good idea of the major controls that
+structa provides, what they do, and the circumstances under which you will need
+to fiddle with them. The :doc:`next tutorial <tutorial_real>` goes through a
+variety of scenarios with some datasets that are closer to the sort of size and
+complexity one might encounter in the real world.
+
+However, it won't be introducing any new functionality that we haven't covered
+above and at this point you may simply want to take structa for a spin with
+your own datasets.
+
+
+.. _MD5: https://en.wikipedia.org/wiki/MD5
+.. _SHA1: https://en.wikipedia.org/wiki/SHA-1

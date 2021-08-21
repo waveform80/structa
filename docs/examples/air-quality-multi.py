@@ -100,11 +100,7 @@ data = {
 }
 
 for location in data:
-    if random.random() < 0.5:
-        reading = random.choice(list(data[location]['readings']))
-        date = random.choice(list(data[location]['readings'][reading]))
-        value = data[location]['readings'][reading].pop(date)
-        # Change the date to the 31st of February...
-        data[location]['readings'][reading]['2020-02-31T12:34:56'] = value
-
-json.dump(data, sys.stdout)
+    filename = location.lower().replace(' ', '-').replace('.', '')
+    filename = 'air-quality-{filename}.json'.format(filename=filename)
+    with open(filename, 'w') as out:
+        json.dump({location: data[location]}, out)

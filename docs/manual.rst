@@ -171,3 +171,10 @@ Optional Arguments
     Controls whether the "safe" or "unsafe" YAML loader is used to parse YAML
     files. The default is the "safe" parser. Only use :option:`--no-yaml-safe`
     if you trust the source of your data
+
+.. option:: --json-strict, --no-json-strict
+
+    Controls whether the JSON decoder permits control characters within
+    strings, which isn't technically valid JSON. The default is to be strict
+    and disallow such characters
+

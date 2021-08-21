@@ -66,7 +66,7 @@ tweak things and see what's going on under structa's hood a bit more easily.
 
 The following script generates a fairly sizeable JSON file (~11MB) apparently
 recording various air quality readings from places which bear absolutely no
-resemblance whatsoever to my adoptive home city (ahem):
+resemblance whatsoever to my adoptive city (ahem):
 
 .. literalinclude:: examples/air-quality.py
    :caption: air-quality.py
@@ -107,20 +107,20 @@ Javascript "object") at the top level, keyed by strings in the range
 Under these keys are more mappings which have six keys (which structa has
 displayed in alphabetical order for ease of reading):
 
-* "alt" which maps to an integer in some range (in the example above 31 to 85,
-  but this will likely be different for you)
+* **alt** which maps to an integer in some range (in the example above 31 to
+  85, but this will likely be different for you)
 
-* "euid" which maps to a string which always started with "GB" and is followed
-  by several numerals
+* **euid** which maps to a string which always started with "GB" and is
+  followed by several numerals
 
-* "lat" which maps to a floating point value around 53
+* **lat** which maps to a floating point value around 53
 
-* "long" which maps to another floating point roughly around -2
+* **long** which maps to another floating point roughly around -2
 
-* "ukid" which maps to a string always starting with UKA00 followed by several
-  numerals
+* **ukid** which maps to a string always starting with UKA00 followed by
+  several numerals
 
-* And finally, "readings" which maps to another dictionary of strings ...
+* And finally, **readings** which maps to another dictionary of strings …
 
 * Which maps to *another* dictionary which is keyed by timestamps in string
   format, which map to floating point values
@@ -130,10 +130,16 @@ displayed in a different color (to distinguish them from literals like the
 "ukid" and "euid" keys), as are patterns within fixed length strings, and
 various keywords like "range=".
 
-You may also notice that several of the types (definitely the outer "str", but
-possibly other types within the top-level dictionary) are underlined. This
-indicates that these values are *unique* throughout the entire dataset
-(suitable as top-level keys if entered into a database).
+.. note::
+
+    You may also notice that several of the types (definitely the outer "str",
+    but possibly other types within the top-level dictionary, like lat/long)
+    are underlined. This indicates that these values are *unique* throughout
+    the entire dataset, and thus potentially suitable as top-level keys if
+    entered into a database.
+
+    Just because you *can* use something as a unique key, however, doesn't mean
+    you *should* (floating point values being a classic example).
 
 
 Optional Keys
@@ -182,7 +188,7 @@ in every single dictionary at that level.
 ==========
 
 Next, we'll make another script (a copy of :file:`air-quality-opt.py`), which
-adds some more code to "corrupts" some of the timestamps:
+adds some more code to "corrupt" some of the timestamps:
 
 .. code-block:: console
 
@@ -192,7 +198,7 @@ adds some more code to "corrupts" some of the timestamps:
 .. literalinclude:: examples/air-quality-bad.py
    :caption: air-quality-bad.py
    :start-at: for location in data:
-   :emphasize-lines: 3-6
+   :emphasize-lines: 3-7
 
 What does structa make of this?
 
@@ -225,36 +231,65 @@ setting (:option:`structa --bad-threshold`) which means not all data in a given
 sequence has to match the pattern under test.
 
 
-Whitespace
-==========
+Multiple Inputs
+===============
 
-By default, structa strips whitespace from strings prior to analysis. This is
-probably not necessary for the vast majority of modern datasets, but it's a
-reasonably safe default, and can be controlled with the :option:`structa
---strip-whitespace` and :option:`structa --no-strip-whitespace` options in any
-case.
-
-One other option that is affected by whitespace stripping is the "empty"
-threshold. This is the proportion of string values that are permitted to be
-empty (and thus ignored) when analysing a field of data. By default, this is
-99% meaning the vast majority of a given field can be blank, and structa will
-still analyze the remaining strings to determine whether they represent
-integers, datetimes, etc.
-
-If the proportion of blank strings in a field exceeds the empty threshold, the
-field will simply be marked as a string without any further processing.
-
-For example:
-
-.. literalinclude:: examples/mostly-blank.py
-   :caption:
-
-This script outputs (as JSON) a list of strings of integers, roughly 70% of
-which will be blank. By default, structa is happy with this:
+Time for another script (based on a copy of the prior
+:file:`air-quality-bad.py` script), which produces each location as its own
+separate JSON file:
 
 .. code-block:: console
 
-    $ python3 mostly-blank.py | structa
-    [ str of int range=0..100 pattern="d" ]
+    $ cp air-quality-bad.py air-quality-multi.py
+    $ editor air-quality-multi.py
 
-However, if we force the empty threshold down below 70%:
+.. literalinclude:: examples/air-quality-multi.py
+   :caption: air-quality-multi.py
+   :start-at: for location in data:
+   :emphasize-lines: 2-7
+
+We can pass all the files as inputs to structa simultaneously, which will cause
+it to assume that they should all be processed as if they have comparable
+structures:
+
+.. code-block:: console
+
+    $ python3 air-quality-multi.py
+    $ ls *.json
+    air-quality-blackshire.json           air-quality-prestchester.json
+    air-quality-mancford-peccadillo.json  air-quality-salport.json
+    air-quality-mancford-shartson.json    air-quality-st-wigpools.json
+    $ structa air-quality-*.json
+    {
+        str range="Blackshire".."St. Wigpools": {
+            'alt': int range=15..92,
+            'euid': str range="GB0213A".."GB1029A" pattern="GB[01][028-9][1-26-7][2-379]A",
+            'lat': float range=53.49709..53.98315,
+            'long': float range=-2.924566..-2.021445,
+            'readings': {
+                str range="NO".."PM2.5": { str of timestamp range=2020-01-01 00:00:00..2021-02-20 15:00:00 pattern="%Y-%m-%dT%H:%M:%S": float range=-2.982586..327.4161 }
+            },
+            'ukid': str range="UKA00148".."UKA00786" pattern="UKA00[135-7][13-47-8][06-9]"
+        }
+    }
+
+In this case, structa has merged the top-level mapping in each file into one
+large top-level mapping. It would do the same if a top-level list were found in
+each file too.
+
+
+Conclusion
+==========
+
+This concludes the structa tutorial series. You should now have some experience
+of using structa with more complex datasets, how to tune its various settings
+for different scenarios, and what to look out for in the results to get the
+most out of its analysis.
+
+In other words, if you wish to use structa from the command line, you should be
+all set. If you want help dealing with some specific scenarios, the sections in
+:doc:`recipes` may be of interest. Alternatively, if you wish to use structa in
+your own Python scripts, the :doc:`api` may prove useful.
+
+Finally, if you wish to hack on structa yourself, please see the
+:doc:`development` chapter for more information.
