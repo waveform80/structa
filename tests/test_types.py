@@ -581,9 +581,9 @@ def test_empty():
     assert str(pattern) == ''
     assert repr(pattern) == 'Empty()'
     assert xml(pattern).tag == 'empty'
-    assert not pattern.validate(None)
-    assert not pattern.validate(1)
-    assert not pattern.validate('foo')
+    assert pattern.validate(None)
+    assert pattern.validate(1)
+    assert pattern.validate('foo')
     assert Empty() == Empty()
     assert Empty() == Value()
     assert Empty() == Int(Counter((1, 2, 3)))

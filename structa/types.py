@@ -1057,7 +1057,7 @@ _empty = Empty()
 _value = Value()
 
 
-def zip_tuple_fields(it1, it2):
+def zip_tuple_fields(it1, it2, *, similarity_threshold=1):
     indexes1 = {item.index: item for item in it1}
     indexes2 = {item.index: item for item in it2}
     common_indexes = indexes1.keys() & indexes2.keys()
