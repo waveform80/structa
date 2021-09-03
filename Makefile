@@ -11,11 +11,11 @@ DEST_DIR=/
 # Calculate the base names of the distribution, the location of all source,
 # documentation, packaging, icon, and executable script files
 NAME:=$(shell $(PYTHON) $(PYFLAGS) setup.py --name)
+WHEEL_NAME:=$(subst -,_,$(NAME))
 VER:=$(shell $(PYTHON) $(PYFLAGS) setup.py --version)
-PYVER:=$(shell $(PYTHON) $(PYFLAGS) -c "import sys; print('py%d.%d' % sys.version_info[:2])")
 PY_SOURCES:=$(shell \
 	$(PYTHON) $(PYFLAGS) setup.py egg_info >/dev/null 2>&1 && \
-	grep -v "\.egg-info" $(NAME).egg-info/SOURCES.txt)
+	cat $(WHEEL_NAME).egg-info/SOURCES.txt | grep -v "\.egg-info"  | grep -v "\.mo$$")
 DOC_SOURCES:=docs/conf.py \
 	$(wildcard docs/*.png) \
 	$(wildcard docs/*.svg) \
@@ -27,9 +27,10 @@ DOC_SOURCES:=docs/conf.py \
 SUBDIRS:=
 
 # Calculate the name of all outputs
-DIST_WHEEL=dist/$(NAME)-$(VER)-py3-none-any.whl
+DIST_WHEEL=dist/$(WHEEL_NAME)-$(VER)-py3-none-any.whl
 DIST_TAR=dist/$(NAME)-$(VER).tar.gz
 DIST_ZIP=dist/$(NAME)-$(VER).zip
+MAN_PAGES=man/structa.1
 
 
 # Default target
@@ -55,6 +56,7 @@ doc: $(DOC_SOURCES)
 	$(MAKE) -C docs html
 	$(MAKE) -C docs epub
 	$(MAKE) -C docs latexpdf
+	$(MAKE) $(MAN_PAGES)
 
 preview:
 	$(MAKE) -C docs preview
@@ -73,31 +75,34 @@ develop:
 	@# These have to be done separately to avoid a cockup...
 	$(PIP) install -U setuptools
 	$(PIP) install -U pip
+	$(PIP) install -U twine
+	$(PIP) install -U tox
 	$(PIP) install -e .[doc,test,yaml]
 
 test:
 	$(PYTEST)
 
 clean:
-	rm -fr dist/ build/ .pytest_cache/ .mypy_cache/ $(NAME).egg-info/ tags .coverage
+	rm -fr dist/ build/ man/ .pytest_cache/ .mypy_cache/ $(WHEEL_NAME).egg-info/ tags .coverage
 	for dir in $(SUBDIRS); do \
 		$(MAKE) -C $$dir clean; \
 	done
 	find $(CURDIR) -name "*.pyc" -delete
+	find $(CURDIR) -name "__pycache__" -delete
 
 tags: $(PY_SOURCES)
-	ctags -R --exclude="build/*" --exclude="debian/*" --exclude="docs/*" --languages="Python"
+	ctags -R --exclude="build/*" --exclude="docs/*" --languages="Python"
 
 lint: $(PY_SOURCES)
-	pylint structa
+	pylint $(WHEEL_NAME)
 
 $(SUBDIRS):
 	$(MAKE) -C $@
 
 $(MAN_PAGES): $(DOC_SOURCES)
-	$(PYTHON) $(PYFLAGS) setup.py build_sphinx -b man
+	$(MAKE) -C docs man
 	mkdir -p man/
-	cp build/sphinx/man/*.[0-9] man/
+	cp build/man/*.[0-9] man/
 
 $(DIST_TAR): $(PY_SOURCES) $(SUBDIRS)
 	$(PYTHON) $(PYFLAGS) setup.py sdist --formats gztar
