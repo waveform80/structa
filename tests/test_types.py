@@ -73,6 +73,7 @@ def test_dict_with_pattern():
             Str(FrozenCounter(('a', 'a', 'b')), pattern=[any_char]),
             Int(FrozenCounter((1, 1, 2)))
         )])
+    assert pattern.size == 3
     assert pattern.lengths.min == 0
     assert pattern.lengths.max == 2
     assert str(pattern) == '{str pattern=.: int range=1..2}'
@@ -157,6 +158,7 @@ def test_tuple_with_pattern():
                 pattern=[any_char, any_char, any_char])),
         TupleField(Field(1, count=3, optional=False), Int(Counter([1, 2, 3]))),
     ])
+    assert pattern.size == 5
     assert pattern.lengths.min == 2
     assert pattern.lengths.max == 2
     assert str(pattern) == '(str pattern=..., int range=1..3)'
@@ -211,6 +213,8 @@ def test_tuple_with_long_pattern():
     assert pattern + pattern == pattern
     assert pattern == pattern + pattern
     assert pattern != Int(Counter((1, 2, 3)))
+    with pytest.raises(TypeError):
+        pattern + 100
 
 
 def test_tuplefield_equality():
@@ -305,6 +309,8 @@ def test_str():
     assert pattern.lengths.max == 4
     assert pattern.pattern is None
     assert pattern.values.unique
+    assert pattern.size == 1
+    assert Counter(pattern.sample) == Counter(data)
     assert str(pattern) == 'str'
     assert xml(pattern).tag == 'str'
     assert pattern.validate('blah')
@@ -368,6 +374,7 @@ def test_int():
     data = {1, 2, 3, 1000}
     pattern = Int.from_strings(Counter(str(i) for i in data), 'd', True)
     assert pattern == StrRepr(Int(Counter(data)), pattern='d')
+    assert pattern.size == 1
     assert pattern.validate('5')
     assert not pattern.validate(1)
     assert not pattern.validate('2000')
@@ -409,6 +416,7 @@ def test_datetime():
     pattern = DateTime.from_strings(
         Counter(d.strftime(iso_fmt) for d in data), iso_fmt)
     assert pattern == StrRepr(DateTime(Counter(data)), pattern=iso_fmt)
+    assert pattern.size == 1
     assert pattern.validate('1970-01-01 00:30:00')
     assert not pattern.validate(86400)
     assert not pattern.validate('1980-01-01 00:00:00')
@@ -462,6 +470,7 @@ def test_datetime_strrepr_numrepr():
 def test_bool():
     pattern = Bool.from_strings(Counter(('f', 't')), 'f|t')
     assert pattern == StrRepr(Bool(Counter((False, True))), pattern='f|t')
+    assert pattern.size == 1
     assert pattern.validate('t')
     assert xml(pattern).tag == 'strof'
     assert iselement(xml(pattern).find('bool'))
@@ -559,36 +568,37 @@ def test_fields():
 
 
 def test_value():
-    pattern = Value()
+    pattern = Value(sample=[])
     assert str(pattern) == 'value'
     assert repr(pattern) == 'Value()'
     assert xml(pattern).tag == 'value'
     assert pattern.validate(None)
     assert pattern.validate(1)
     assert pattern.validate('foo')
-    assert Value() == Value()
-    assert Value() == Empty()
-    assert Value() == Int(Counter((1, 2, 3)))
-    assert Int(Counter((1, 2, 3))) == Value()
-    assert Value() != 'foo'
-    assert Value() + Empty() == Value()
+    assert Value(sample=[]) == Value(sample=[1, 'foo'])
+    assert Value(sample=[]) == Empty()
+    assert Value(sample=[]) == Int(Counter((1, 2, 3)))
+    assert Int(Counter((1, 2, 3))) == Value(sample=[])
+    assert Value(sample=[]) != 'foo'
+    assert Value(sample=[]) + Empty() == Value(sample=[])
     with pytest.raises(TypeError):
-        Value() + 1
+        Value(sample=[]) + 1
 
 
 def test_empty():
     pattern = Empty()
     assert str(pattern) == ''
     assert repr(pattern) == 'Empty()'
+    assert pattern.size == 0
     assert xml(pattern).tag == 'empty'
     assert pattern.validate(None)
     assert pattern.validate(1)
     assert pattern.validate('foo')
     assert Empty() == Empty()
-    assert Empty() == Value()
+    assert Empty() == Value(sample=[])
     assert Empty() == Int(Counter((1, 2, 3)))
     assert Int(Counter((1, 2, 3))) == Empty()
     assert Empty() != 'foo'
-    assert Empty() + Value() == Value()
+    assert Empty() + Value(sample=[]) == Value(sample=[])
     with pytest.raises(TypeError):
         Empty() + 1

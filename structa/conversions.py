@@ -45,10 +45,12 @@ def try_conversion(sample, conversion, threshold=0):
     returns the converted value. If the *conversion* fails it must raise a
     :exc:`ValueError` exception.
 
-    If *threshold* is specified (defaults to 0), it defines the number of
-    "bad" conversions (which result in :exc:`ValueError` being raised) that
-    will be ignored. If *threshold* is exceeded, then :exc:`ValueError` will
-    be raised (or rather passed through from the underlying *conversion*).
+    If *threshold* is specified (defaults to 0), it defines the number of "bad"
+    conversions (which result in :exc:`ValueError` being raised) that will be
+    ignored. If *threshold* is exceeded, then :exc:`ValueError` will be raised
+    (or rather passed through from the underlying *conversion*). Likewise, if
+    *threshold* is not exceeded, but zero conversions are successful then
+    :exc:`ValueError` will also be raised.
     """
     assert isinstance(sample, (Counter, FrozenCounter))
     assert sample

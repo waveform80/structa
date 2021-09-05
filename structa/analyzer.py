@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from fractions import Fraction
 from collections import Counter, namedtuple
 from itertools import groupby
+from operator import attrgetter
 
 from dateutil.relativedelta import relativedelta
 
@@ -46,6 +47,7 @@ from .types import (
     StrRepr,
     SourcesList,
     sources_list,
+    rematch_sample,
 )
 
 
@@ -275,40 +277,17 @@ class Analyzer:
         """
         Merge common sub-structures into a single structure. For example, if a
         :class:`Dict` maps several :class:`Field` instances to other mappings
-        which are all the same, then they can be collapsed to a single scalar
-        which maps to the singular structure.
+        which are all equal in structure, then they can be collapsed to a
+        single scalar which maps to the common structure.
         """
         if isinstance(path, Container):
             if self._progress is not None:
                 self._progress.update(path.lengths.card)
             if isinstance(path, Dict):
-                # Only Dicts containing containers are merged; Dicts (directly)
-                # containing scalars, and Tuples are left alone as containers
-                # of distinct columns / fields
-                if (
-                    len(path.content) > 1 and
-                    isinstance(path.content[0].key, Field) and
-                    isinstance(path.content[0].value, Container) and
-                    all(
-                        item.value == path.content[0].value
-                        for item in path.content[1:]
-                    )
-                ):
-                    keys = self._match(
-                        (
-                            item.key.value
-                            for item in path.content
-                            for i in range(item.key.count)
-                        ),
-                        (path,), threshold=0)
-                    return path.with_content([
-                        DictField(self._merge(keys), self._merge(sum(
-                            (p.value for p in path.content[1:]),
-                            path.content[0].value
-                        )))
-                    ])
+                return self._merge_dict(path)
+            elif isinstance(path, Tuple):
                 return path.with_content([
-                    DictField(self._merge(field.key), self._merge(field.value))
+                    TupleField(field.index, self._merge(field.value))
                     for field in path.content
                 ])
             else:
@@ -323,6 +302,54 @@ class Analyzer:
                 elif isinstance(path, Scalar):
                     self._progress.update(path.values.card)
             return path
+
+    def _merge_dict(self, path):
+        """
+        Subroutine of :meth:`_merge` to handle the specific case of merging
+        the content of a :class:`Dict`.
+        """
+        # Only Dicts containing containers are merged; Dicts (directly)
+        # containing scalars, and Tuples are left alone as containers
+        # of distinct columns / fields
+        if (
+            len(path.content) > 1 and
+            isinstance(path.content[0].key, Field) and
+            isinstance(path.content[0].value, Container) and
+            all(
+                item.value == path.content[0].value
+                for item in path.content[1:]
+            )
+        ):
+            keys = self._match(
+                (
+                    item.key.value
+                    for item in path.content
+                    for i in range(item.key.count)
+                ),
+                (path,), threshold=0)
+            result = path.with_content([
+                DictField(self._merge(keys), self._merge(sum(
+                    (p.value for p in path.content[1:]),
+                    path.content[0].value
+                )))
+            ])
+            if isinstance(result.content[0].value, rematch_sample):
+                result = result.with_content([
+                    DictField(
+                        result.content[0].key,
+                        self._match(
+                            result.content[0].value.sample,
+                            (path,) + (result.content[0].key,),
+                            threshold=0)
+                    )
+                ])
+            result.content = sorted(result.content, key=attrgetter('key'))
+            return result
+        else:
+            return path.with_content([
+                DictField(field.key, self._merge(field.value))
+                for field in path.content
+            ])
 
     def _analyze(self, it, path, *, threshold=None, card=1):
         """
@@ -518,7 +545,7 @@ class Analyzer:
             try:
                 sample = Counter(items)
             except TypeError:
-                return Value()
+                return Value(items)
             else:
                 # If we're attempting to match the "keys" of a dict or tuple
                 # then apply the field threshold to split (and analyze)
@@ -549,7 +576,7 @@ class Analyzer:
                         sample = stripped_sample
                     return self._match_str(sample)
                 else:
-                    return Value()
+                    return Value(items)
 
     def _match_str(self, items):
         """

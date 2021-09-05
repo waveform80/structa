@@ -12,6 +12,7 @@ from textwrap import indent, shorten
 from functools import partial, total_ordering
 from collections.abc import Mapping
 from operator import attrgetter
+from itertools import chain
 
 from .collections import Counter, FrozenCounter
 from .conversions import some, try_conversion, parse_bool
@@ -210,16 +211,18 @@ class Type:
 
 
 class Container(Type):
-    __slots__ = ('lengths', 'content', '_similarity_threshold')
+    __slots__ = ('lengths', 'sample', 'content', '_similarity_threshold')
 
     def __init__(self, sample, content=None, similarity_threshold=0.5):
         super().__init__()
+        self.sample = sample
         self.lengths = Stats.from_lengths(sample)
         self.content = content
         self._similarity_threshold = similarity_threshold
 
     def __repr__(self):
-        return format_repr(self, lengths=None, _similarity_threshold=None)
+        return format_repr(self, sample=None, lengths=None,
+                           _similarity_threshold=None)
 
     def __xml__(self):
         return tag.container(
@@ -244,6 +247,7 @@ class Container(Type):
         # is used instead
         if self.__eq__(other) is True:
             result = copy(self)
+            result.sample = self.sample + other.sample
             result.lengths = self.lengths + other.lengths
             result.content = [a + b for a, b in self._zip(other)]
             return result
@@ -298,12 +302,32 @@ class Dict(Container):
         return tag.dict(iter(super().__xml__()))
 
     def __add__(self, other):
-        result = super().__add__(other)
-        if isinstance(result, Dict):
-            # XXX Need to handle merge of Scalar+Field
-            # FIXME this won't work with all possible keys
-            result.content = sorted(result.content, key=attrgetter('key'))
-        return result
+        # See notes in Container.__add__
+        if self.__eq__(other) is True:
+            # Dict.__add__ has one special case. When one side of the addition
+            # has Field keys, and the other side *doesn't*, but equality is
+            # still there because, say, all the fields are strings and the
+            # other side is a Str, then we need to sum all the keys together
+            # rather than piecemeal, and mark the values as needing a re-match
+            # at the analyzer level
+            self_fields = isinstance(self.content[0], Field)
+            other_fields = isinstance(self.content[0], Field)
+            if self_fields != other_fields:
+                result = copy(self)
+                result.sample = self.sample + other.sample
+                result.lengths = self.lengths + other.lengths
+                key = sum(
+                    [f.key for f in self.content[1:]] +
+                    [f.key for f in other.content],
+                    self.content[0].key)
+                value = rematch_sample(chain(
+                    (f.value.sample for f in self.content) +
+                    (f.value.sample for f in other.content)))
+                result.content = [DictField(key, value)]
+                return result
+            else:
+                return super().__add__(other)
+        return NotImplemented
 
     def _zip(self, other):
         # XXX What about other.similarity_threshold? It's not variable
@@ -316,6 +340,10 @@ class Dict(Container):
         # TypeError or ValueError accordingly (bad type or just wrong range)
         # XXX Also needs refining for keys present
         return isinstance(value, dict)
+
+
+class rematch_sample(list):
+    pass
 
 
 class DictField(Type):
@@ -445,8 +473,7 @@ class List(Container):
         # actual structure itself
         if super().__eq__(other) is True:
             return some(
-                (a == b for a, b in
-                 zip(self.content, other.content)),
+                (a == b for a, b in zip(self.content, other.content)),
                 min(len(self.content), len(other.content)) *
                 1 - self.similarity_threshold)
         return NotImplemented
@@ -486,6 +513,10 @@ class Scalar(Type):
 
     def __repr__(self):
         return format_repr(self, values='...')
+
+    @property
+    def sample(self):
+        return self.values.sample.elements()
 
     @property
     def size(self):
@@ -658,6 +689,7 @@ class Str(Scalar):
                 self.pattern is None or other.pattern is None or
                 len(self.pattern) != len(other.pattern)
             ):
+                # XXX We can do better here
                 new_pattern = None
             else:
                 new_pattern = [
@@ -966,14 +998,10 @@ class Field(Type):
 
 
 class Value(Type):
-    __slots__ = ()
+    __slots__ = ('sample',)
 
-    def __new__(cls):
-        # This is a singleton class; all instances are the same
-        try:
-            return _value
-        except NameError:
-            return super().__new__(cls)
+    def __init__(self, sample):
+        self.sample = sample
 
     __hash__ = Type.__hash__
 
@@ -984,7 +1012,9 @@ class Value(Type):
 
     def __add__(self, other):
         if isinstance(other, Type):
-            return self
+            result = copy(self)
+            result.sample = self.sample + other.sample
+            return result
         return NotImplemented
 
     __radd__ = __add__
@@ -1043,6 +1073,10 @@ class Empty(Type):
 
     def __xml__(self):
         return tag.empty()
+
+    @property
+    def sample(self):
+        return []
 
     def validate(self, value):
         # This counter-intuitive result is because the Empty value indicates a

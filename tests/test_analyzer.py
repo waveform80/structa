@@ -424,7 +424,7 @@ def test_analyze_any_value_list():
         list(chr(ord('A') + n) for n in range(26))
     )
     assert Analyzer(bad_threshold=0).analyze(data) == List(
-        sample=[data], content=[Value()])
+        sample=[data], content=[Value(sample=data)])
 
 
 def test_analyze_strs_with_blanks():
@@ -591,7 +591,8 @@ def test_analyze_value():
     class Foo:
         __hash__ = None
     data = [Foo(), Foo(), Foo()]
-    assert Analyzer().analyze(data) == List(sample=[data], content=[Value()])
+    assert Analyzer().analyze(data) == List(
+        sample=[data], content=[Value(sample=data)])
 
 
 def test_analyze_merge_trivial():
