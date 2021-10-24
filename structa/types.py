@@ -828,7 +828,8 @@ class StrRepr(Repr):
             elif isinstance(self.content, DateTime):
                 value = datetime.strptime(value, self.pattern)
             else:
-                assert False
+                assert False, (
+                    'validating str-repr of {self.content!r}'.format(self=self))
         except ValueError:
             return False
         else:
@@ -844,7 +845,7 @@ class NumRepr(Repr):
         elif self.pattern is Float:
             template = 'float of {self.content}'
         else:
-            assert False
+            assert False, 'str(num-repr) of {self.content!r}'.format(self=self)
         return template.format(self=self)
 
     def __xml__(self):
@@ -853,7 +854,7 @@ class NumRepr(Repr):
         elif self.pattern is Float:
             return tag.floatof(xml(self.content))
         else:
-            assert False
+            assert False, 'xml(num-repr) of {self.content!r}'.format(self=self)
 
     def __add__(self, other):
         if self == other:
@@ -871,7 +872,8 @@ class NumRepr(Repr):
             if isinstance(self.content, DateTime):
                 value = datetime.fromtimestamp(value)
             else:
-                assert False
+                assert False, (
+                    'validating num-repr of {self.content!r}'.format(self=self))
         except ValueError:
             return False
         else:
@@ -978,6 +980,7 @@ class Field(Type):
                 result = copy(other)
                 sample = FrozenCounter({len(self.value): self.count})
                 result.lengths = other.lengths + Stats.from_sample(sample)
+                return result
         return NotImplemented
 
     __radd__ = __add__
