@@ -537,9 +537,9 @@ class Analyzer:
             # probably dealing with a table-like input from a language that
             # doesn't support tuples (e.g. JS)
             if (
-                    len(items) > len(items[0]) and
-                    0 < len(items[0]) < threshold and
-                    all(len(item) == len(items[0]) for item in items)
+                len(items) > len(items[0]) and
+                0 < len(items[0]) < threshold and
+                all(len(item) == len(items[0]) for item in items)
             ):
                 return Tuple(items)
             else:

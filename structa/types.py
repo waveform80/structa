@@ -785,6 +785,8 @@ class StrRepr(Repr):
     __hash__ = Repr.__hash__
 
     def __eq__(self, other):
+        # XXX What about string rep of bool 'x' == string rep of bool 'y' where
+        # actual value is string x|y?
         if not isinstance(other, StrRepr):
             return NotImplemented
         if super().__eq__(other) is not True:
@@ -926,6 +928,8 @@ class Field(Type):
     __slots__ = ('value', 'count', 'optional')
 
     def __init__(self, value, count, optional=False):
+        # XXX Field values must (by definition) be immutable; we should enforce
+        # this. hash()->TypeError is probably a reasonable proxy for this
         super().__init__()
         assert not isinstance(value, (Dict, List))
         self.value = value
