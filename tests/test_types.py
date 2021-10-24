@@ -460,8 +460,8 @@ def test_datetime_numrepr():
     assert pattern == NumRepr(DateTime(Counter(data)), pattern=Int)
     assert pattern.validate(1000)
     assert not pattern.validate('1000')
-    assert not pattern.validate(2000000000)
     assert not pattern.validate(1200000)
+    assert not pattern.validate(2000000000000)
 
 
 def test_datetime_strrepr_numrepr():
@@ -546,12 +546,15 @@ def test_numrepr_add():
 def test_url():
     data = [
         'http://localhost',
-        'https://structa.readthedocs.io/',
+        'http://structa.readthedocs.io/',
     ]
-    pattern = URL(Counter(data))
+    pattern = URL(Counter(data), pattern=[
+        CharClass(c) for c in 'http://'] + [
+        AnyChar() for c in 'structa.readthedocs.io/'])
     assert str(pattern) == 'URL'
     assert xml(pattern).tag == 'url'
-    assert pattern.validate('https://www.google.com/')
+    assert pattern.validate('http://www.google.com/')
+    assert not pattern.validate('https://www.google.com/')
     assert not pattern.validate('foo')
     assert not pattern.validate(100)
 
