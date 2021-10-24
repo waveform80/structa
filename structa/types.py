@@ -330,9 +330,10 @@ class Dict(Container):
                     *(f.value.sample for f in self.content),
                     *(f.value.sample for f in other.content)))
                 result.content = [DictField(key, value)]
-                return result
             else:
-                return super().__add__(other)
+                result = super().__add__(other)
+                result.content = sorted(result.content, key=attrgetter('key'))
+            return result
         return NotImplemented
 
     def _zip(self, other):
