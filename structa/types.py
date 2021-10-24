@@ -310,19 +310,25 @@ class Dict(Container):
             # other side is a Str, then we need to sum all the keys together
             # rather than piecemeal, and mark the values as needing a re-match
             # at the analyzer level
-            self_fields = isinstance(self.content[0], Field)
-            other_fields = isinstance(self.content[0], Field)
+            self_fields = isinstance(self.content[0].key, Field)
+            other_fields = isinstance(other.content[0].key, Field)
             if self_fields != other_fields:
                 result = copy(self)
                 result.sample = self.sample + other.sample
                 result.lengths = self.lengths + other.lengths
-                key = sum(
-                    [f.key for f in self.content[1:]] +
-                    [f.key for f in other.content],
-                    self.content[0].key)
+                if self_fields:
+                    assert len(other.content) == 1
+                    key = sum(
+                        [f.key for f in self.content],
+                        other.content[0].key)
+                else:
+                    assert len(self.content) == 1
+                    key = sum(
+                        [f.key for f in other.content],
+                        self.content[0].key)
                 value = rematch_sample(chain(
-                    (f.value.sample for f in self.content) +
-                    (f.value.sample for f in other.content)))
+                    *(f.value.sample for f in self.content),
+                    *(f.value.sample for f in other.content)))
                 result.content = [DictField(key, value)]
                 return result
             else:
