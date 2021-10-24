@@ -91,7 +91,7 @@ clean:
 	find $(CURDIR) -name "__pycache__" -delete
 
 tags: $(PY_SOURCES)
-	ctags -R --exclude="build/*" --exclude="docs/*" --languages="Python"
+	ctags -R --languages="Python" $(PY_SOURCES)
 
 lint: $(PY_SOURCES)
 	pylint $(WHEEL_NAME)
