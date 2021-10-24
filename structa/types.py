@@ -406,10 +406,7 @@ class Tuple(Container):
         return tag.tuple(iter(super().__xml__()))
 
     def _zip(self, other):
-        # XXX What about other.similarity_threshold? It's not variable
-        # currently but worth considering for future
-        return zip_tuple_fields(self.content, other.content,
-                                similarity_threshold=self.similarity_threshold)
+        return zip_tuple_fields(self.content, other.content)
 
     def validate(self, value):
         # XXX Make validate a procedure which raises a validation exception;
@@ -1099,23 +1096,16 @@ class Empty(Type):
 _empty = Empty()
 
 
-def zip_tuple_fields(it1, it2, *, similarity_threshold=1):
+def zip_tuple_fields(it1, it2):
     indexes1 = {item.index: item for item in it1}
     indexes2 = {item.index: item for item in it2}
     common_indexes = indexes1.keys() & indexes2.keys()
-    minimum_common = similarity_threshold * min(len(indexes1), len(indexes2))
-    if len(common_indexes) > minimum_common:
-        for index in common_indexes:
-            yield indexes1[index], indexes2[index]
-        for index in indexes1.keys() - indexes2.keys():
-            yield indexes1[index], TupleField(index, _empty)
-        for index in indexes2.keys() - indexes1.keys():
-            yield TupleField(index, _empty), indexes2[index]
-    else:
-        for index1 in indexes1.values():
-            yield index1, None
-        for index2 in indexes2.values():
-            yield None, index2
+    for index in common_indexes:
+        yield indexes1[index], indexes2[index]
+    for index in indexes1.keys() - indexes2.keys():
+        yield indexes1[index], TupleField(_empty, _empty)
+    for index in indexes2.keys() - indexes1.keys():
+        yield TupleField(_empty, _empty), indexes2[index]
 
 
 def zip_dict_fields(it1, it2, *, similarity_threshold=1):

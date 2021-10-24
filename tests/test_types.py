@@ -199,21 +199,21 @@ def test_dict_disimilar_matches():
             Int([d['num'] for d in data])),
     ], similarity_threshold=1)
     data = [
-        {'num': 1, 'label': 'foo', 'active': True},
-        {'num': 2, 'label': 'bar', 'active': True},
-        {'num': 3, 'label': 'baz', 'active': False},
-        {'num': 4, 'label': 'quux', 'active': False},
+        {'digit': 1, 'name': 'foo', 'active': True},
+        {'digit': 2, 'name': 'bar', 'active': True},
+        {'digit': 3, 'name': 'baz', 'active': False},
+        {'digit': 4, 'name': 'quux', 'active': False},
     ]
     pattern_b = Dict(data, content=[
         DictField(
             Field('active', count=3, optional=False),
             Bool([d['active'] for d in data])),
         DictField(
-            Field('label', count=4, optional=False),
-            Str([d['label'] for d in data], pattern=None)),
+            Field('name', count=4, optional=False),
+            Str([d['name'] for d in data], pattern=None)),
         DictField(
-            Field('num', count=4, optional=False),
-            Int([d['num'] for d in data])),
+            Field('digit', count=4, optional=False),
+            Int([d['digit'] for d in data])),
     ], similarity_threshold=1)
     assert pattern_a != pattern_b
     assert pattern_b != pattern_a
@@ -464,39 +464,28 @@ def test_tuple_disimilar_matches():
             Field(0, count=3, optional=False),
             Str([t[0] for t in data],
                 pattern=[any_char, any_char, any_char])),
-        TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
-    ], similarity_threshold=1)
+        TupleField(
+            Field(1, count=3, optional=False),
+            Int([t[1] for t in data])),
+    ])
     data = [
-        ('foo', 1, False),
-        ('bar', 2, False),
-        ('baz', 3, True),
+        (1, 'foo', False),
+        (2, 'bar', False),
+        (3, 'baz', True),
     ]
     pattern_b = Tuple(data, content=[
         TupleField(
             Field(0, count=3, optional=False),
-            Str([t[0] for t in data],
-                pattern=[any_char, any_char, any_char])),
-        TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
-        TupleField(Field(2, count=3, optional=False), Bool([t[2] for t in data])),
-    ], similarity_threshold=1)
+            Int([t[0] for t in data])),
+        TupleField(
+            Field(1, count=3, optional=False),
+            Str([t[1] for t in data], pattern=[any_char, any_char, any_char])),
+        TupleField(
+            Field(2, count=3, optional=False),
+            Bool([t[2] for t in data])),
+    ])
     assert pattern_a != pattern_b
     assert pattern_b != pattern_a
-    # Just to cover all lines in zip_tuple_fields (which won't otherwise be
-    # covered because equality will always terminate early)
-    assert list(zip_tuple_fields(pattern_a.content, pattern_b.content)) == [
-        (pattern_a.content[0], None),
-        (pattern_a.content[1], None),
-        (None, pattern_b.content[0]),
-        (None, pattern_b.content[1]),
-        (None, pattern_b.content[2]),
-    ]
-    assert list(zip_tuple_fields(pattern_b.content, pattern_a.content)) == [
-        (pattern_b.content[0], None),
-        (pattern_b.content[1], None),
-        (pattern_b.content[2], None),
-        (None, pattern_a.content[0]),
-        (None, pattern_a.content[1]),
-    ]
 
 
 def test_tuplefield_equality():
