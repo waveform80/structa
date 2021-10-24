@@ -143,10 +143,192 @@ def test_dict_with_long_pattern():
         pattern + 100
 
 
+def test_dict_similar_matches():
+    data = [
+        {'num': 1, 'label': 'foo'},
+        {'num': 2, 'label': 'bar'},
+        {'num': 3, 'label': 'baz'},
+        {'num': 4, 'label': 'quux'},
+    ]
+    pattern_a = Dict(data, content=[
+        DictField(
+            Field('label', count=4, optional=False),
+            Str([d['label'] for d in data], pattern=None)),
+        DictField(
+            Field('num', count=4, optional=False),
+            Int([d['num'] for d in data])),
+    ], similarity_threshold=0.5)
+    data = [
+        {'num': 1, 'label': 'foo', 'active': True},
+        {'num': 2, 'label': 'bar', 'active': True},
+        {'num': 3, 'label': 'baz', 'active': False},
+        {'num': 4, 'label': 'quux', 'active': False},
+    ]
+    pattern_b = Dict(data, content=[
+        DictField(
+            Field('active', count=3, optional=False),
+            Bool([d['active'] for d in data])),
+        DictField(
+            Field('label', count=4, optional=False),
+            Str([d['label'] for d in data], pattern=None)),
+        DictField(
+            Field('num', count=4, optional=False),
+            Int([d['num'] for d in data])),
+    ], similarity_threshold=0.5)
+    assert pattern_a == pattern_b
+    assert pattern_b == pattern_a
+    result = pattern_a + pattern_b
+    assert result.content[0].key.optional
+    result = pattern_b + pattern_a
+    assert result.content[0].key.optional
+
+
+def test_dict_disimilar_matches():
+    data = [
+        {'num': 1, 'label': 'foo'},
+        {'num': 2, 'label': 'bar'},
+        {'num': 3, 'label': 'baz'},
+        {'num': 4, 'label': 'quux'},
+    ]
+    pattern_a = Dict(data, content=[
+        DictField(
+            Field('label', count=4, optional=False),
+            Str([d['label'] for d in data], pattern=None)),
+        DictField(
+            Field('num', count=4, optional=False),
+            Int([d['num'] for d in data])),
+    ], similarity_threshold=1)
+    data = [
+        {'num': 1, 'label': 'foo', 'active': True},
+        {'num': 2, 'label': 'bar', 'active': True},
+        {'num': 3, 'label': 'baz', 'active': False},
+        {'num': 4, 'label': 'quux', 'active': False},
+    ]
+    pattern_b = Dict(data, content=[
+        DictField(
+            Field('active', count=3, optional=False),
+            Bool([d['active'] for d in data])),
+        DictField(
+            Field('label', count=4, optional=False),
+            Str([d['label'] for d in data], pattern=None)),
+        DictField(
+            Field('num', count=4, optional=False),
+            Int([d['num'] for d in data])),
+    ], similarity_threshold=1)
+    assert pattern_a != pattern_b
+    assert pattern_b != pattern_a
+    # Just to cover all lines in zip_dict_fields (which won't otherwise be
+    # covered because equality will always terminate early)
+    assert list(zip_dict_fields(pattern_a.content, pattern_b.content)) == [
+        (pattern_a.content[0], None),
+        (pattern_a.content[1], None),
+        (None, pattern_b.content[0]),
+        (None, pattern_b.content[1]),
+        (None, pattern_b.content[2]),
+    ]
+    assert list(zip_dict_fields(pattern_b.content, pattern_a.content)) == [
+        (pattern_b.content[0], None),
+        (pattern_b.content[1], None),
+        (pattern_b.content[2], None),
+        (None, pattern_a.content[0]),
+        (None, pattern_a.content[1]),
+    ]
+
+
 def test_dictfield_equality():
     d = DictField(Field('foo', 3), Int(Counter((1, 2, 3))))
     assert d == d
     assert not d == 'foo'
+
+
+def test_dict_merge_scalar_fields():
+    data = [
+        {'num1': '1', 'label': 'foo', 'foo': 'a'},
+        {'num1': '2', 'label': 'bar', 'foo': 'b'},
+        {'num1': '3', 'label': 'baz'},
+        {'num1': '4', 'label': 'quux', 'foo': 'c'},
+    ]
+    # XXX Actual analysis thinks 'foo' is str-repr of hex int. What happens
+    # when this is added to, say, 'q'?
+    pattern_a = Dict(data, content=[
+        DictField(
+            Field('foo', count=3, optional=True),
+            Str(Counter(set('abc')), pattern=None)),
+        DictField(
+            Field('label', count=4, optional=False),
+            Str(Counter({'foo', 'bar', 'baz', 'quux'}), pattern=None)),
+        DictField(
+            Field('num1', count=4, optional=False),
+            Str(Counter(str(i) for i in range(1, 5)), pattern='d')),
+    ])
+    data = [
+        {'foo': 'a', 'label': 'foo', 'num{}'.format(i): str(i)}
+        for i in range(50)
+    ]
+    pattern_b = Dict(data, content=[
+        DictField(
+            Str(Counter({'foo', 'label'} | set('num{}'.format(i) for i in range(50)))),
+            Str(Counter(str(i) for i in range(50)), pattern=None)),
+    ])
+    assert pattern_a == pattern_b
+    result = pattern_a + pattern_b
+    assert len(result.content) == 1
+    assert isinstance(result.content[0].key, Str)
+    assert isinstance(result.content[0].value, rematch_sample)
+    # Test commutativity of mismatched merge
+    assert pattern_b == pattern_a
+    result = pattern_b + pattern_a
+    assert len(result.content) == 1
+    assert isinstance(result.content[0].key, Str)
+    assert isinstance(result.content[0].value, rematch_sample)
+
+
+def test_dict_merge_compound_fields():
+    data = [
+        {('angle', 'len'): (0, 0)},
+        {('angle', 'len'): (0, 1)},
+        {('angle', 'len'): (90, 1)},
+        {('angle', 'len'): (180, 1)},
+        {('angle', 'len'): (270, 1)},
+    ]
+    pattern_a = Dict(data, content=[
+        DictField(
+            Field(('angle', 'len'), count=5, optional=False),
+            Tuple([v for d in data for v in d.values()], content=[
+                TupleField(0, Int(Counter(v[0] for d in data for v in d.values()))),
+                TupleField(1, Int(Counter(v[1] for d in data for v in d.values()))),
+            ])
+        ),
+    ])
+    data = [
+        {(chr(ord('a') + i), chr(ord('a') + i + 1)): (i, i + 1)}
+        for i in range(25)
+    ]
+    pattern_b = Dict(data, content=[
+        DictField(
+            Tuple([k for d in data for k in d], content=[
+                TupleField(0, Str(Counter(k[0] for d in data for k in d),
+                                  pattern=None)),
+                TupleField(1, Str(Counter(k[1] for d in data for k in d),
+                                  pattern=None)),
+            ]),
+            Tuple([v for d in data for v in d.values()], content=[
+                TupleField(0, Int(Counter(v[0] for d in data for v in d.values()))),
+                TupleField(1, Int(Counter(v[1] for d in data for v in d.values()))),
+            ])
+        ),
+    ])
+    assert pattern_a == pattern_b
+    result = pattern_a + pattern_b
+    assert len(result.content) == 1
+    assert isinstance(result.content[0].key, Tuple)
+    assert isinstance(result.content[0].value, rematch_sample)
+    # Test commutativity of mismatched merge
+    assert pattern_b == pattern_a
+    result = pattern_b + pattern_a
+    assert len(result.content) == 1
+    assert isinstance(result.content[0].key, Tuple)
+    assert isinstance(result.content[0].value, rematch_sample)
 
 
 def test_tuple():
@@ -174,9 +356,9 @@ def test_tuple_with_pattern():
     pattern = Tuple(data, content=[
         TupleField(
             Field(0, count=3, optional=False),
-            Str(Counter(['foo', 'bar', 'baz']),
+            Str([t[0] for t in data],
                 pattern=[any_char, any_char, any_char])),
-        TupleField(Field(1, count=3, optional=False), Int(Counter([1, 2, 3]))),
+        TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
     ])
     assert pattern.size == 5
     assert pattern.lengths.min == 2
@@ -235,6 +417,86 @@ def test_tuple_with_long_pattern():
     assert pattern != Int(Counter((1, 2, 3)))
     with pytest.raises(TypeError):
         pattern + 100
+
+
+def test_tuple_similar_matches():
+    data = [
+        ('foo', 1),
+        ('bar', 2),
+        ('baz', 3),
+    ]
+    pattern_a = Tuple(data, content=[
+        TupleField(
+            Field(0, count=3, optional=False),
+            Str([t[0] for t in data],
+                pattern=[any_char, any_char, any_char])),
+        TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
+    ], similarity_threshold=0.5)
+    data = [
+        ('foo', 1, False),
+        ('bar', 2, False),
+        ('baz', 3, True),
+    ]
+    pattern_b = Tuple(data, content=[
+        TupleField(
+            Field(0, count=3, optional=False),
+            Str([t[0] for t in data],
+                pattern=[any_char, any_char, any_char])),
+        TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
+        TupleField(Field(2, count=3, optional=False), Bool([t[2] for t in data])),
+    ], similarity_threshold=0.5)
+    assert pattern_a == pattern_b
+    assert pattern_b == pattern_a
+    result = pattern_a + pattern_b
+    assert result.content[2].index.optional
+    result = pattern_b + pattern_a
+    assert result.content[2].index.optional
+
+
+def test_tuple_disimilar_matches():
+    data = [
+        ('foo', 1),
+        ('bar', 2),
+        ('baz', 3),
+    ]
+    pattern_a = Tuple(data, content=[
+        TupleField(
+            Field(0, count=3, optional=False),
+            Str([t[0] for t in data],
+                pattern=[any_char, any_char, any_char])),
+        TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
+    ], similarity_threshold=1)
+    data = [
+        ('foo', 1, False),
+        ('bar', 2, False),
+        ('baz', 3, True),
+    ]
+    pattern_b = Tuple(data, content=[
+        TupleField(
+            Field(0, count=3, optional=False),
+            Str([t[0] for t in data],
+                pattern=[any_char, any_char, any_char])),
+        TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
+        TupleField(Field(2, count=3, optional=False), Bool([t[2] for t in data])),
+    ], similarity_threshold=1)
+    assert pattern_a != pattern_b
+    assert pattern_b != pattern_a
+    # Just to cover all lines in zip_tuple_fields (which won't otherwise be
+    # covered because equality will always terminate early)
+    assert list(zip_tuple_fields(pattern_a.content, pattern_b.content)) == [
+        (pattern_a.content[0], None),
+        (pattern_a.content[1], None),
+        (None, pattern_b.content[0]),
+        (None, pattern_b.content[1]),
+        (None, pattern_b.content[2]),
+    ]
+    assert list(zip_tuple_fields(pattern_b.content, pattern_a.content)) == [
+        (pattern_b.content[0], None),
+        (pattern_b.content[1], None),
+        (pattern_b.content[2], None),
+        (None, pattern_a.content[0]),
+        (None, pattern_a.content[1]),
+    ]
 
 
 def test_tuplefield_equality():
@@ -559,6 +821,63 @@ def test_url():
     assert not pattern.validate(100)
 
 
+def test_field_of_scalar():
+    f1 = Field('url', False)
+    f2 = Field('url', False)
+    f3 = Field('count', False)
+    f4 = Field(4, False)
+    t1 = Str(Counter({'abc': 3}), pattern=None)
+    assert f1 == f2
+    assert f1 + f2 == f1
+    assert f2 != f3
+    assert f1 == t1
+    assert f1 + t1 == t1
+    assert f3 < f2
+    assert f2 > f3
+    assert f4 < f1
+    assert f1 > f4
+    with pytest.raises(TypeError):
+        f2 + f3
+    with pytest.raises(TypeError):
+        f2 < 'abc'
+    with pytest.raises(TypeError):
+        f2 > 'abc'
+    assert f1 != 1
+
+
+def test_field_of_tuples():
+    f1 = Field(('a', 'b', 'c'), False)
+    f2 = Field(('a', 'b', 'c'), False)
+    f3 = Field(('d', 'e'), False)
+    data = [
+        ('foo', 'bar', 'baz'),
+        ('bar', 'baz', 'foo'),
+        ('baz', 'bar', 'foo'),
+    ]
+    t1 = Tuple(data, content=[
+        TupleField(Field(0, count=3, optional=False),
+                   Str([t[0] for t in data], pattern=None)),
+        TupleField(Field(1, count=3, optional=False),
+                   Str([t[1] for t in data], pattern=None)),
+        TupleField(Field(2, count=3, optional=False),
+                   Str([t[2] for t in data], pattern=None)),
+    ])
+    assert f1 == f2
+    assert f1 + f2 == f1
+    assert f2 != f3
+    assert f1 == t1
+    assert f1 + t1 == t1
+    assert f2 < f3
+    assert f3 > f2
+    with pytest.raises(TypeError):
+        f1 + f3
+    with pytest.raises(TypeError):
+        f1 < 'abc'
+    with pytest.raises(TypeError):
+        f1 > 'abc'
+    assert f1 != 1
+
+
 def test_fields():
     data = {'url'}
     pattern = Fields({Field(s, False) for s in data})
@@ -575,25 +894,12 @@ def test_fields():
     assert not pattern.validate(1)
     assert len(pattern) == 3
 
-    f1 = Field('url', False)
-    f2 = Field('url', False)
-    f3 = Field('count', False)
-    assert f1 == f2
-    assert f1 + f2 == f1
-    assert f2 != f3
-    assert f3 < f2
-    assert f2 > f3
-    with pytest.raises(TypeError):
-        f2 + f3
-    with pytest.raises(TypeError):
-        f2 > 'abc'
-    assert f1 != 1
-
 
 def test_value():
     pattern = Value(sample=[])
     assert str(pattern) == 'value'
     assert repr(pattern) == 'Value()'
+    assert pattern.size == 1
     assert xml(pattern).tag == 'value'
     assert pattern.validate(None)
     assert pattern.validate(1)
@@ -623,5 +929,11 @@ def test_empty():
     assert Int(Counter((1, 2, 3))) == Empty()
     assert Empty() != 'foo'
     assert Empty() + Value(sample=[]) == Value(sample=[])
+    f = Field(value='foo', count=5, optional=False)
+    assert Empty() + f == f
+    assert (Empty() + f).optional
+    f = Field(value='foo', count=5, optional=True)
+    assert Empty() + f == f
+    assert (Empty() + f).optional
     with pytest.raises(TypeError):
         Empty() + 1
