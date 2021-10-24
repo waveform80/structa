@@ -522,7 +522,13 @@ class Analyzer:
             return Empty()
         elif all(isinstance(item, sources_list) for item in items):
             return SourcesList(items)
-        elif all(isinstance(item, tuple) for item in items):
+        elif (
+            # As a special case, if the tuples are the keys of a dict, we defer
+            # matching them until we've analyzed the number of distinct tuples
+            # in case they're beneath the field threshold (see else below)
+            not (path and isinstance(path[-1], Dict)) and
+            all(isinstance(item, tuple) for item in items)
+        ):
             return Tuple(items)
         elif all(isinstance(item, list) for item in items):
             # If this is a list of lists, all sub-lists are the same length and
@@ -557,6 +563,11 @@ class Analyzer:
                             Field(key, count, optional=count < parent_card)
                             for key, count in sample.items()
                         )
+                    elif all(isinstance(item, tuple) for item in items):
+                        # Deferred return from the special case above; this is
+                        # where we've a pure sample of tuples as the keys of a
+                        # dict but there're more than the field threshold
+                        return Tuple(items)
 
                 # The following ordering is important; note that bool's domain
                 # is a subset of int's
