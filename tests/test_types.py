@@ -31,6 +31,26 @@ def test_stats():
     assert repr(c) == 'Stats(sample=..., card=3, min=0, q1=0, q2=1, q3=3, max=3, unique=True)'
 
 
+def test_stats_xml():
+    s1 = Stats.from_sample(Counter(range(10)))
+    assert tostring(xml(s1), encoding='unicode') == (
+        '<stats>'
+            '<summary values="10" count="10" unique="unique">'
+                '<min>0</min><q1>2</q1><q2>5</q2><q3>7</q3><max>9</max>'
+                '<graph>'
+                    '<fill>..</fill>'
+                    '<lit>1</lit>'
+                    '<fill>..</fill>'
+                    '<lit>2</lit>'
+                    '<fill>.</fill>'
+                    '<lit>3</lit>'
+                    '<fill>..</fill>'
+                '</graph>'
+            '</summary>'
+        '</stats>'
+    )
+
+
 def test_stats_merge():
     s1 = Stats.from_sample(Counter(range(10)))
     s2 = Stats.from_sample(Counter(range(20)))
