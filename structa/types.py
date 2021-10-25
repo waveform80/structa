@@ -12,7 +12,6 @@ from textwrap import indent, shorten
 from functools import partial, total_ordering
 from collections.abc import Mapping
 from operator import attrgetter
-from itertools import chain
 
 from .collections import Counter, FrozenCounter
 from .conversions import some, try_conversion, parse_bool
@@ -304,6 +303,7 @@ class Dict(Container):
     def __add__(self, other):
         # See notes in Container.__add__
         if self.__eq__(other) is True:
+            assert self.content, 'empty Dict.content during Dict.__add__'
             # Dict.__add__ has one special case. When one side of the addition
             # has Field keys, and the other side *doesn't*, but equality is
             # still there because, say, all the fields are strings and the
@@ -326,9 +326,9 @@ class Dict(Container):
                     key = sum(
                         [f.key for f in other.content],
                         self.content[0].key)
-                value = rematch_sample(chain(
-                    *(f.value.sample for f in self.content),
-                    *(f.value.sample for f in other.content)))
+                value = Redo(
+                    sum((list(f.value.sample) for f in self.content), []) +
+                    sum((list(f.value.sample) for f in other.content), []))
                 result.content = [DictField(key, value)]
             else:
                 result = super().__add__(other)
@@ -347,10 +347,6 @@ class Dict(Container):
         # TypeError or ValueError accordingly (bad type or just wrong range)
         # XXX Also needs refining for keys present
         return isinstance(value, dict)
-
-
-class rematch_sample(list):
-    pass
 
 
 class DictField(Type):
@@ -1045,6 +1041,19 @@ class Value(Type):
     @property
     def size(self):
         return 1
+
+
+class Redo(Value):
+    __slots__ = ()
+
+    def __repr__(self):
+        return 'Redo({})'.format(self.sample)
+
+    def __str__(self):
+        assert False, 'str of Redo'
+
+    def __xml__(self):
+        assert False, 'xml of Redo'
 
 
 class Empty(Type):

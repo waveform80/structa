@@ -44,10 +44,10 @@ from .types import (
     URL,
     Empty,
     Value,
+    Redo,
     StrRepr,
     SourcesList,
     sources_list,
-    rematch_sample,
 )
 
 
@@ -333,16 +333,7 @@ class Analyzer:
                     path.content[0].value
                 )))
             ])
-            if isinstance(result.content[0].value, rematch_sample):
-                result = result.with_content([
-                    DictField(
-                        result.content[0].key,
-                        self._match(
-                            result.content[0].value.sample,
-                            (path,) + (result.content[0].key,),
-                            threshold=0)
-                    )
-                ])
+            result = self._merge_redo(result)
             result.content = sorted(result.content, key=attrgetter('key'))
             return result
         else:
@@ -350,6 +341,38 @@ class Analyzer:
                 DictField(field.key, self._merge(field.value))
                 for field in path.content
             ])
+
+    def _merge_redo(self, path):
+        """
+        Subroutine of :meth:`_merge_dict` which recursively searches Dict
+        instances for :class:`Redo` markers and re-runs :meth:`_analyze` on
+        them.
+        """
+        if isinstance(path, Dict):
+            assert path.content, 'empty Dict.content during _merge_redo'
+            if isinstance(path.content[0].value, Redo):
+                assert len(path.content) == 1, 'more than one Redo'
+                # Redo cannot contain Redo, so we don't need to worry about
+                # recursing down here
+                value = self._analyze(
+                    path.content[0].value.sample, (), threshold=0)
+                assert isinstance(value, List), 'Redo returned non-List'
+                assert len(value.content) == 1, 'Redo returned multiples'
+                return path.with_content([
+                    DictField(path.content[0].key, value.content[0])
+                ])
+            else:
+                return path.with_content([
+                    DictField(field.key, self._merge_redo(field.value))
+                    for field in path.content
+                ])
+        elif isinstance(path, Container):
+            return path.with_content([
+                self._merge_redo(item)
+                for item in path.content
+            ])
+        else:
+            return path
 
     def _analyze(self, it, path, *, threshold=None, card=1):
         """

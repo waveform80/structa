@@ -274,13 +274,13 @@ def test_dict_merge_scalar_fields():
     result = pattern_a + pattern_b
     assert len(result.content) == 1
     assert isinstance(result.content[0].key, Str)
-    assert isinstance(result.content[0].value, rematch_sample)
+    assert isinstance(result.content[0].value, Redo)
     # Test commutativity of mismatched merge
     assert pattern_b == pattern_a
     result = pattern_b + pattern_a
     assert len(result.content) == 1
     assert isinstance(result.content[0].key, Str)
-    assert isinstance(result.content[0].value, rematch_sample)
+    assert isinstance(result.content[0].value, Redo)
 
 
 def test_dict_merge_compound_fields():
@@ -322,13 +322,13 @@ def test_dict_merge_compound_fields():
     result = pattern_a + pattern_b
     assert len(result.content) == 1
     assert isinstance(result.content[0].key, Tuple)
-    assert isinstance(result.content[0].value, rematch_sample)
+    assert isinstance(result.content[0].value, Redo)
     # Test commutativity of mismatched merge
     assert pattern_b == pattern_a
     result = pattern_b + pattern_a
     assert len(result.content) == 1
     assert isinstance(result.content[0].key, Tuple)
-    assert isinstance(result.content[0].value, rematch_sample)
+    assert isinstance(result.content[0].value, Redo)
 
 
 def test_tuple():
