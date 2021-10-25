@@ -266,11 +266,18 @@ class Analyzer:
         sub-structures within it, returning the new top level structure
         (another :class:`~structa.types.Type` instance).
         """
+        def set_threshold(s):
+            if isinstance(s, Dict):
+                s.similarity_threshold = self.merge_threshold
+                for field in s.content:
+                    set_threshold(field.value)
+            elif isinstance(s, Container):
+                for field in s.content:
+                    set_threshold(field)
+
         if self._progress is not None:
             self._progress.reset()
-        if isinstance(struct, Container):
-            # NOTE this propagates down all subordinate Containers
-            struct.similarity_threshold = self.merge_threshold
+        set_threshold(struct)
         return self._merge(struct)
 
     def _merge(self, path):

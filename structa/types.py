@@ -210,18 +210,16 @@ class Type:
 
 
 class Container(Type):
-    __slots__ = ('lengths', 'sample', 'content', '_similarity_threshold')
+    __slots__ = ('lengths', 'sample', 'content')
 
-    def __init__(self, sample, content=None, similarity_threshold=0.5):
+    def __init__(self, sample, content=None):
         super().__init__()
         self.sample = sample
         self.lengths = Stats.from_lengths(sample)
         self.content = content
-        self._similarity_threshold = similarity_threshold
 
     def __repr__(self):
-        return format_repr(self, sample=None, lengths=None,
-                           _similarity_threshold=None)
+        return format_repr(self, sample=None, lengths=None)
 
     def __xml__(self):
         return tag.container(
@@ -266,24 +264,17 @@ class Container(Type):
     def size(self):
         return sum(item.size for item in self.content) + 1
 
-    @property
-    def similarity_threshold(self):
-        return self._similarity_threshold
-
-    @similarity_threshold.setter
-    def similarity_threshold(self, value):
-        # FIXME this propagation should be done externally to permit fine
-        # grained control of this property should users require it
-        self._similarity_threshold = value
-        for item in self.content:
-            if isinstance(item, (TupleField, DictField)):
-                item = item.value
-            if isinstance(item, Container):
-                item.similarity_threshold = value
-
 
 class Dict(Container):
-    __slots__ = ()
+    __slots__ = ('similarity_threshold',)
+
+    def __init__(self, sample, content=None, *, similarity_threshold=0.5):
+        super().__init__(sample, content)
+        self.similarity_threshold = similarity_threshold
+
+    def __repr__(self):
+        return format_repr(self, sample=None, lengths=None,
+                           similarity_threshold=None)
 
     def __str__(self):
         if self.content is None:
@@ -472,10 +463,7 @@ class List(Container):
         # The Stats lengths attribute is ignored as it has no bearing on the
         # actual structure itself
         if super().__eq__(other) is True:
-            return some(
-                (a == b for a, b in zip(self.content, other.content)),
-                min(len(self.content), len(other.content)) *
-                1 - self.similarity_threshold)
+            return all(a == b for a, b in zip(self.content, other.content))
         return NotImplemented
 
     def validate(self, value):

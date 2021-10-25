@@ -431,7 +431,7 @@ def test_tuple_similar_matches():
             Str([t[0] for t in data],
                 pattern=[any_char, any_char, any_char])),
         TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
-    ], similarity_threshold=0.5)
+    ])
     data = [
         ('foo', 1, False),
         ('bar', 2, False),
@@ -444,7 +444,7 @@ def test_tuple_similar_matches():
                 pattern=[any_char, any_char, any_char])),
         TupleField(Field(1, count=3, optional=False), Int([t[1] for t in data])),
         TupleField(Field(2, count=3, optional=False), Bool([t[2] for t in data])),
-    ], similarity_threshold=0.5)
+    ])
     assert pattern_a == pattern_b
     assert pattern_b == pattern_a
     result = pattern_a + pattern_b
