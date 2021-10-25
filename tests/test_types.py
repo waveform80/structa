@@ -77,9 +77,10 @@ def test_dict():
     assert pattern.content is None
     assert str(pattern) == '{}'
     assert repr(pattern) == 'Dict(content=None)'
-    assert pattern.validate({})
-    assert not pattern.validate('foo')
     assert xml(pattern).tag == 'dict'
+    pattern.validate({})
+    with pytest.raises(TypeError):
+        pattern.validate('foo')
 
 
 def test_dict_with_pattern():
@@ -342,9 +343,12 @@ def test_tuple():
     assert pattern.lengths.max == 3
     assert str(pattern) == '()'
     assert repr(pattern) == 'Tuple(content=None)'
-    assert pattern.validate(())
-    assert not pattern.validate('foo')
     assert xml(pattern).tag == 'tuple'
+    pattern.validate(())
+    with pytest.raises(TypeError):
+        pattern.validate('foo')
+    with pytest.raises(ValueError):
+        pattern.validate((1, 2, 3, 4))
 
 
 def test_tuple_with_pattern():
@@ -505,9 +509,10 @@ def test_list():
     assert pattern.lengths.max == 3
     assert pattern.content is None
     assert str(pattern) == '[]'
-    assert pattern.validate([])
-    assert not pattern.validate('foo')
     assert xml(pattern).tag == 'list'
+    pattern.validate([])
+    with pytest.raises(TypeError):
+        pattern.validate('foo')
 
 
 def test_list_with_pattern():
@@ -584,41 +589,47 @@ def test_str():
     assert Counter(pattern.sample) == Counter(data)
     assert str(pattern) == 'str'
     assert xml(pattern).tag == 'str'
-    assert pattern.validate('blah')
-    assert not pattern.validate('')
     assert pattern + pattern == pattern
     assert pattern == pattern + pattern
     assert pattern != Int(Counter((1, 2, 3)))
     with pytest.raises(TypeError):
         pattern + 100
+    pattern.validate('blah')
+    with pytest.raises(ValueError):
+        pattern.validate('')
 
 
 def test_fixed_str():
-    data = ['0x{:04x}'.format(n) for n in range(32)]
+    data = ['0x{:04x}'.format(n) for n in range(1000)]
     pattern = Str(Counter(data), pattern=[
         CharClass('0'), CharClass('x'), CharClass('0'), CharClass('0'),
         hex_digit, hex_digit])
     assert pattern.lengths.min == pattern.lengths.max == 6
     assert pattern.values.unique
     assert str(pattern) == 'str pattern=0x00xx'
-    assert pattern.validate('0x0012')
-    assert not pattern.validate('0xff')
-    assert not pattern.validate('foobar')
-    assert not pattern.validate('0x00fg')
+    pattern.validate('0x0012')
+    with pytest.raises(ValueError):
+        pattern.validate('0xff')
+    with pytest.raises(ValueError):
+        pattern.validate('foobar')
+    with pytest.raises(ValueError):
+        pattern.validate('0x00fg')
 
 
 def test_str_repr():
     pattern = StrRepr(Int(Counter({1, 2, 3, 4})), pattern='d')
     assert str(pattern) == 'str of int range=1..4 pattern=d'
     assert xml(pattern).tag == 'strof'
-    assert pattern.validate('1')
-    assert not pattern.validate(1)
-    assert not pattern.validate('a')
     assert pattern.values.unique
     assert pattern + pattern == pattern
     assert pattern == pattern + pattern
     pattern2 = StrRepr(DateTime(Counter((dt.datetime.now(),))), pattern='%Y-%m-%dT%H:%M:%S')
     assert pattern != pattern2
+    pattern.validate('1')
+    with pytest.raises(TypeError):
+        pattern.validate(1)
+    with pytest.raises(ValueError):
+        pattern.validate('a')
 
 
 def test_num_repr():
@@ -643,12 +654,26 @@ def test_num_repr():
 
 def test_int():
     data = {1, 2, 3, 1000}
-    pattern = Int.from_strings(Counter(str(i) for i in data), 'd', True)
+    pattern = Int(Counter(data))
+    assert pattern.size == 1
+    assert str(pattern) == 'int range=1..1.0K'
+    assert xml(pattern).tag == 'int'
+    assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    with pytest.raises(TypeError):
+        pattern + 100
+    pattern.validate(5)
+    with pytest.raises(TypeError):
+        pattern.validate('1')
+    with pytest.raises(ValueError):
+        pattern.validate(2000)
+
+
+def test_int_strrepr():
+    data = {1, 2, 3, 1000}
+    pattern = Int.from_strings(Counter(str(i) for i in data), 'd', 1)
     assert pattern == StrRepr(Int(Counter(data)), pattern='d')
     assert pattern.size == 1
-    assert pattern.validate('5')
-    assert not pattern.validate(1)
-    assert not pattern.validate('2000')
     assert str(pattern) == 'str of int range=1..1.0K pattern=d'
     assert xml(pattern).tag == 'strof'
     assert iselement(xml(pattern).find('int'))
@@ -657,15 +682,34 @@ def test_int():
     assert pattern != Str(Counter(('a', 'b', 'c')))
     with pytest.raises(TypeError):
         pattern + 100
+    pattern.validate('5')
+    with pytest.raises(TypeError):
+        pattern.validate(1)
+    with pytest.raises(ValueError):
+        pattern.validate('2000')
 
 
 def test_float():
     data = {0.0, 1.0, 1000.0}
-    pattern = Float.from_strings(Counter(str(f) for f in data), 'f', True)
+    pattern = Float(Counter(data))
+    assert str(pattern) == 'float range=0..1000'
+    assert xml(pattern).tag == 'float'
+    assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Str(Counter(('a', 'b', 'c')))
+    with pytest.raises(TypeError):
+        pattern + 100
+    pattern.validate(1.0)
+    with pytest.raises(TypeError):
+        pattern.validate('1.0')
+    with pytest.raises(ValueError):
+        pattern.validate(2000.0)
+
+
+def test_float_strrepr():
+    data = {0.0, 1.0, 1000.0}
+    pattern = Float.from_strings(Counter(str(f) for f in data), 'f', 1)
     assert pattern == StrRepr(Float(Counter(data)), pattern='f')
-    assert pattern.validate('1.0')
-    assert not pattern.validate(1.0)
-    assert not pattern.validate('2000.0')
     assert str(pattern) == 'str of float range=0..1000 pattern=f'
     assert xml(pattern).tag == 'strof'
     assert iselement(xml(pattern).find('float'))
@@ -674,9 +718,36 @@ def test_float():
     assert pattern != Str(Counter(('a', 'b', 'c')))
     with pytest.raises(TypeError):
         pattern + 100
+    pattern.validate('1.0')
+    with pytest.raises(TypeError):
+        pattern.validate(1.0)
+    with pytest.raises(ValueError):
+        pattern.validate('2000.0')
 
 
 def test_datetime():
+    iso_fmt = '%Y-%m-%d %H:%M:%S'
+    data = {
+        dt.datetime.strptime('1970-01-01 00:00:00', iso_fmt),
+        dt.datetime.strptime('1970-01-01 00:00:01', iso_fmt),
+        dt.datetime.strptime('1970-01-02 00:00:00', iso_fmt),
+        dt.datetime.strptime('1970-02-01 00:00:00', iso_fmt),
+    }
+    pattern = DateTime(Counter(data))
+    assert pattern.size == 1
+    assert str(pattern) == 'datetime range=1970-01-01 00:00:00..1970-02-01 00:00:00'
+    assert xml(pattern).tag == 'datetime'
+    assert pattern + pattern == pattern
+    assert pattern == pattern + pattern
+    assert pattern != Str(Counter(('a', 'b', 'c')))
+    pattern.validate(datetime.strptime('1970-01-01 00:30:00', iso_fmt))
+    with pytest.raises(TypeError):
+        pattern.validate(86400)
+    with pytest.raises(ValueError):
+        pattern.validate(datetime.strptime('1980-01-01 00:00:00', iso_fmt))
+
+
+def test_datetime_strrepr():
     iso_fmt = '%Y-%m-%d %H:%M:%S'
     data = {
         dt.datetime.strptime('1970-01-01 00:00:00', iso_fmt),
@@ -688,15 +759,17 @@ def test_datetime():
         Counter(d.strftime(iso_fmt) for d in data), iso_fmt)
     assert pattern == StrRepr(DateTime(Counter(data)), pattern=iso_fmt)
     assert pattern.size == 1
-    assert pattern.validate('1970-01-01 00:30:00')
-    assert not pattern.validate(86400)
-    assert not pattern.validate('1980-01-01 00:00:00')
     assert str(pattern) == 'str of datetime range=1970-01-01 00:00:00..1970-02-01 00:00:00 pattern=%Y-%m-%d %H:%M:%S'
     assert xml(pattern).tag == 'strof'
     assert iselement(xml(pattern).find('datetime'))
     assert pattern + pattern == pattern
     assert pattern == pattern + pattern
     assert pattern != Str(Counter(('a', 'b', 'c')))
+    pattern.validate('1970-01-01 00:30:00')
+    with pytest.raises(TypeError):
+        pattern.validate(86400)
+    with pytest.raises(ValueError):
+        pattern.validate('1980-01-01 00:00:00')
 
 
 def test_datetime_numrepr():
@@ -709,10 +782,13 @@ def test_datetime_numrepr():
     numbers = Int(Counter(d.timestamp() for d in data))
     pattern = DateTime.from_numbers(numbers)
     assert pattern == NumRepr(DateTime(Counter(data)), pattern=Int)
-    assert pattern.validate(1000)
-    assert not pattern.validate('1000')
-    assert not pattern.validate(1200000)
-    assert not pattern.validate(2000000000000)
+    pattern.validate(1000)
+    with pytest.raises(TypeError):
+        pattern.validate('1000')
+    with pytest.raises(ValueError):
+        pattern.validate(1200000)
+    with pytest.raises(ValueError):
+        pattern.validate(2000000000000)
 
 
 def test_datetime_strrepr_numrepr():
@@ -725,31 +801,52 @@ def test_datetime_strrepr_numrepr():
     numbers = StrRepr(Int(Counter(d.timestamp() for d in data)), pattern='d')
     pattern = DateTime.from_numbers(numbers)
     assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=Int), pattern='d')
-    assert pattern.validate('1000')
-    assert not pattern.validate('2000000000')
-    assert not pattern.validate('foo')
+    pattern.validate('1000')
+    with pytest.raises(ValueError):
+        pattern.validate('2000000000')
+    with pytest.raises(ValueError):
+        pattern.validate('foo')
 
     numbers = StrRepr(Float(Counter(d.timestamp() for d in data)), pattern='f')
     pattern = DateTime.from_numbers(numbers)
     assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=Float), pattern='f')
-    assert pattern.validate('1000')
-    assert pattern.validate('1000.0')
-    assert not pattern.validate('1e9')
-    assert not pattern.validate('foo')
+    pattern.validate('1000')
+    pattern.validate('1000.0')
+    with pytest.raises(ValueError):
+        pattern.validate('1e9')
+    with pytest.raises(ValueError):
+        pattern.validate('foo')
 
 
 def test_bool():
-    pattern = Bool.from_strings(Counter(('f', 't')), 'f|t')
-    assert pattern == StrRepr(Bool(Counter((False, True))), pattern='f|t')
+    pattern = Bool(Counter((False, True)))
     assert pattern.size == 1
-    assert pattern.validate('t')
-    assert xml(pattern).tag == 'strof'
-    assert iselement(xml(pattern).find('bool'))
-    assert not pattern.validate('true')
-    assert not pattern.validate(True)
+    assert xml(pattern).tag == 'bool'
     assert pattern + pattern == pattern
     with pytest.raises(TypeError):
         pattern + 100
+    pattern.validate(True)
+    pattern.validate(1)
+    with pytest.raises(ValueError):
+        pattern.validate(2)
+    with pytest.raises(TypeError):
+        pattern.validate('true')
+
+
+def test_bool_strrepr():
+    pattern = Bool.from_strings(Counter(('f', 't')), 'f|t')
+    assert pattern == StrRepr(Bool(Counter((False, True))), pattern='f|t')
+    assert pattern.size == 1
+    assert xml(pattern).tag == 'strof'
+    assert iselement(xml(pattern).find('bool'))
+    assert pattern + pattern == pattern
+    with pytest.raises(TypeError):
+        pattern + 100
+    pattern.validate('t')
+    with pytest.raises(ValueError):
+        pattern.validate('true')
+    with pytest.raises(TypeError):
+        pattern.validate(True)
 
 
 def test_scalar_add():
@@ -797,17 +894,20 @@ def test_numrepr_add():
 def test_url():
     data = [
         'http://localhost',
-        'http://structa.readthedocs.io/',
+        'https://structa.readthedocs.io/',
     ]
     pattern = URL(Counter(data), pattern=[
-        CharClass(c) for c in 'http://'] + [
-        AnyChar() for c in 'structa.readthedocs.io/'])
+        CharClass(c) for c in 'http'] + [
+        AnyChar() for c in 's://structa.readthedocs.io/'])
     assert str(pattern) == 'URL'
     assert xml(pattern).tag == 'url'
-    assert pattern.validate('http://www.google.com/')
-    assert not pattern.validate('https://www.google.com/')
-    assert not pattern.validate('foo')
-    assert not pattern.validate(100)
+    pattern.validate('http://localhost.local')
+    with pytest.raises(ValueError):
+        pattern.validate('foo')
+    with pytest.raises(ValueError):
+        pattern.validate('httpf://localhost')
+    with pytest.raises(TypeError):
+        pattern.validate(100)
 
 
 def test_field_of_scalar():
@@ -815,12 +915,16 @@ def test_field_of_scalar():
     f2 = Field('url', False)
     f3 = Field('count', False)
     f4 = Field(4, False)
-    t1 = Str(Counter({'abc': 3}), pattern=None)
+    t1 = Str(Counter({'aaa': 3, 'zzz': 1}), pattern=None)
     assert f1 == f2
     assert f1 + f2 == f1
     assert f2 != f3
+    assert t1 == f1
     assert f1 == t1
+    assert t1 != f4
+    assert f4 != t1
     assert f1 + t1 == t1
+    assert t1 + f1 == t1
     assert f3 < f2
     assert f2 > f3
     assert f4 < f1
@@ -871,17 +975,20 @@ def test_fields():
     data = {'url'}
     pattern = Fields({Field(s, False) for s in data})
     assert str(pattern) == "<'url'>"
-    assert pattern.validate('url')
-    assert not pattern.validate('foo')
     assert len(pattern) == 1
+    pattern.validate('url')
+    with pytest.raises(ValueError):
+        pattern.validate('foo')
 
     data = {'url', 'count', 'active'}
     pattern = Fields({Field(s, False) for s in data})
     assert set(s.strip("'") for s in str(pattern).strip('<>').split('|')) == data
-    assert pattern.validate('url')
-    assert not pattern.validate('foo')
-    assert not pattern.validate(1)
     assert len(pattern) == 3
+    pattern.validate('url')
+    with pytest.raises(ValueError):
+        pattern.validate('foo')
+    with pytest.raises(ValueError):
+        pattern.validate(1)
 
 
 def test_value():
@@ -890,9 +997,6 @@ def test_value():
     assert repr(pattern) == 'Value()'
     assert pattern.size == 1
     assert xml(pattern).tag == 'value'
-    assert pattern.validate(None)
-    assert pattern.validate(1)
-    assert pattern.validate('foo')
     assert Value(sample=[]) == Value(sample=[1, 'foo'])
     assert Value(sample=[]) == Empty()
     assert Value(sample=[]) == Int(Counter((1, 2, 3)))
@@ -901,6 +1005,14 @@ def test_value():
     assert Value(sample=[]) + Empty() == Value(sample=[])
     with pytest.raises(TypeError):
         Value(sample=[]) + 1
+    pattern.validate(None)
+    pattern.validate(1)
+    pattern.validate('foo')
+
+
+def test_redo():
+    pattern = Redo(sample=[])
+    assert repr(pattern) == 'Redo([])'
 
 
 def test_empty():
@@ -909,9 +1021,6 @@ def test_empty():
     assert repr(pattern) == 'Empty()'
     assert pattern.size == 0
     assert xml(pattern).tag == 'empty'
-    assert pattern.validate(None)
-    assert pattern.validate(1)
-    assert pattern.validate('foo')
     assert Empty() == Empty()
     assert Empty() == Value(sample=[])
     assert Empty() == Int(Counter((1, 2, 3)))
@@ -926,3 +1035,6 @@ def test_empty():
     assert (Empty() + f).optional
     with pytest.raises(TypeError):
         Empty() + 1
+    pattern.validate(None)
+    pattern.validate(1)
+    pattern.validate('foo')

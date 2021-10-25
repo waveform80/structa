@@ -334,10 +334,9 @@ class Dict(Container):
                                similarity_threshold=self.similarity_threshold)
 
     def validate(self, value):
-        # XXX Make validate a procedure which raises a validation exception;
-        # TypeError or ValueError accordingly (bad type or just wrong range)
+        if not isinstance(value, dict):
+            raise TypeError('{value!r} is not a dictionary'.format(value=value))
         # XXX Also needs refining for keys present
-        return isinstance(value, dict)
 
 
 class DictField(Type):
@@ -397,10 +396,13 @@ class Tuple(Container):
         return zip_tuple_fields(self.content, other.content)
 
     def validate(self, value):
-        # XXX Make validate a procedure which raises a validation exception;
-        # TypeError or ValueError accordingly (bad type or just wrong range)
-        # XXX Also needs refining for fields present
-        return isinstance(value, tuple)
+        if not isinstance(value, tuple):
+            raise TypeError('{value!r} is not a tuple'.format(value=value))
+        if not self.lengths.min <= len(value) <= self.lengths.max:
+            raise ValueError(
+                '{value!r} is not between {self.lengths.min} and '
+                '{self.lengths.max} elements in length'.format(
+                    value=value, self=self))
 
 
 class TupleField(Type):
@@ -467,7 +469,8 @@ class List(Container):
         return NotImplemented
 
     def validate(self, value):
-        return isinstance(value, list)
+        if not isinstance(value, list):
+            raise TypeError('{value!r} is not a list'.format(value=value))
 
 
 class sources_list(list):
@@ -528,10 +531,12 @@ class Float(Scalar):
         return tag.float(iter(super().__xml__()))
 
     def validate(self, value):
-        return (
-            isinstance(value, float) and
-            self.values.min <= value <= self.values.max
-        )
+        if not isinstance(value, float):
+            raise TypeError('{value!r} is not a float'.format(value=value))
+        if not self.values.min <= value <= self.values.max:
+            raise ValueError(
+                '{value!r} is not between {self.values.min!r} and '
+                '{self.values.max!r}'.format(self=self, value=value))
 
 
 class Int(Float):
@@ -563,10 +568,12 @@ class Int(Float):
         return tag.int(iter(super().__xml__()))
 
     def validate(self, value):
-        return (
-            isinstance(value, int) and
-            self.values.min <= value <= self.values.max
-        )
+        if not isinstance(value, int):
+            raise TypeError('{value!r} is not an int'.format(value=value))
+        if not self.values.min <= value <= self.values.max:
+            raise ValueError(
+                '{value!r} is not between {self.values.min!r} and '
+                '{self.values.max!r}'.format(self=self, value=value))
 
 
 class Bool(Int):
@@ -593,10 +600,14 @@ class Bool(Int):
         return tag.bool(iter(super().__xml__()))
 
     def validate(self, value):
-        return (
-            isinstance(value, bool) or
-            (isinstance(value, int) and value in (0, 1))
-        )
+        if isinstance(value, bool):
+            pass
+        elif isinstance(value, int):
+            if not value in (0, 1):
+                raise ValueError('{value!r} is not 0 or 1'.format(value=value))
+        else:
+            raise TypeError(
+                '{value!r} is not a bool or int'.format(value=value))
 
 
 class DateTime(Scalar):
@@ -637,10 +648,14 @@ class DateTime(Scalar):
         return tag.datetime(iter(super().__xml__()))
 
     def validate(self, value):
-        return (
-            isinstance(value, datetime) and
-            self.values.min <= value <= self.values.max
-        )
+        if not isinstance(value, datetime):
+            raise TypeError('{value!r} is not a datetime'.format(value=value))
+        if not self.values.min <= value <= self.values.max:
+            raise ValueError(
+                '{value:%Y-%m-%d %H:%M:%S} is not between '
+                '{self.values.min:%Y-%m-%d %H:%M:%S} and '
+                '{self.values.max:%Y-%m-%d %H:%M:%S}'.format(
+                    self=self, value=value))
 
 
 class Str(Scalar):
@@ -693,15 +708,21 @@ class Str(Scalar):
         return NotImplemented
 
     def validate(self, value):
-        result = (
-            isinstance(value, str) and
-            self.lengths.min <= len(value) <= self.lengths.max
-        )
-        if result and self.pattern is not None:
+        if not isinstance(value, str):
+            raise TypeError('{value!r} is not a str'.format(value=value))
+        if not self.values.min <= value <= self.values.max:
+            raise ValueError(
+                '{value!r} is not between {self.values.min!r} and '
+                '{self.values.max!r}'.format(self=self, value=value))
+        if self.pattern is not None:
             for c1, c2 in zip(value, self.pattern):
                 if c1 not in c2:
-                    return False
-        return result
+                    pattern = ''.join(str(c) for c in self.pattern)
+                    raise ValueError(
+                        '{value!r} does not match {pattern}'.format(
+                            value=value,
+                            pattern=shorten(pattern, width=60,
+                                            placeholder='...')))
 
 
 class Repr(Type):
@@ -792,32 +813,27 @@ class StrRepr(Repr):
 
     def validate(self, value):
         if not isinstance(value, str):
-            return False
-        try:
-            content = self.content
-            if isinstance(self.content, Bool):
-                false, true = self.pattern.split('|', 1)
-                value = parse_bool(value, false, true)
-            elif isinstance(self.content, Int) or (
-                isinstance(self.content, NumRepr) and
-                self.content.pattern is Int
-            ):
-                value = int(value, base=self.int_bases[self.pattern])
-            elif isinstance(self.content, Float) or (
-                isinstance(self.content, NumRepr) and
-                self.content.pattern is Float
-            ):
-                assert self.pattern == 'f'
-                value = float(value)
-            elif isinstance(self.content, DateTime):
-                value = datetime.strptime(value, self.pattern)
-            else:
-                assert False, (
-                    'validating str-repr of {self.content!r}'.format(self=self))
-        except ValueError:
-            return False
+            raise TypeError('{value!r} is not a str'.format(value=value))
+        if isinstance(self.content, Bool):
+            false, true = self.pattern.split('|', 1)
+            value = parse_bool(value, false, true)
+        elif isinstance(self.content, Int) or (
+            isinstance(self.content, NumRepr) and
+            self.content.pattern is Int
+        ):
+            value = int(value, base=self.int_bases[self.pattern])
+        elif isinstance(self.content, Float) or (
+            isinstance(self.content, NumRepr) and
+            self.content.pattern is Float
+        ):
+            assert self.pattern == 'f'
+            value = float(value)
+        elif isinstance(self.content, DateTime):
+            value = datetime.strptime(value, self.pattern)
         else:
-            return self.content.validate(value)
+            assert False, (
+                'validating str-repr of {self.content!r}'.format(self=self))
+        self.content.validate(value)
 
 
 class NumRepr(Repr):
@@ -851,17 +867,13 @@ class NumRepr(Repr):
 
     def validate(self, value):
         if not isinstance(value, Real):
-            return False
-        try:
-            if isinstance(self.content, DateTime):
-                value = datetime.fromtimestamp(value)
-            else:
-                assert False, (
-                    'validating num-repr of {self.content!r}'.format(self=self))
-        except ValueError:
-            return False
+            raise TypeError('{value!r} is not a number'.format(value=value))
+        if isinstance(self.content, DateTime):
+            value = datetime.fromtimestamp(value)
         else:
-            return self.content.validate(value)
+            assert False, (
+                'validating num-repr of {self.content!r}'.format(self=self))
+        self.content.validate(value)
 
 
 class URL(Str):
@@ -878,11 +890,10 @@ class URL(Str):
         )
 
     def validate(self, value):
+        super().validate(value)
         # TODO use urlparse (or split?) and check lots more schemes
-        return (
-            super().validate(value) and
-            value.startswith(('http://', 'https://'))
-        )
+        if not value.startswith(('http://', 'https://')):
+            raise ValueError('{value!r} is not a URL'.format(value=value))
 
 
 class Fields(Type):
@@ -905,7 +916,14 @@ class Fields(Type):
         return '<{choices}>'.format(choices=choices)
 
     def validate(self, value):
-        return any(choice.validate(value) for choice in self)
+        for choice in self:
+            try:
+                choice.validate(value)
+            except (TypeError, ValueError) as exc:
+                last_exc = exc
+            else:
+                return
+        raise last_exc
 
 
 class Field(Type):
@@ -945,7 +963,12 @@ class Field(Type):
             # field_threshold entries and is treated as a table (keyed by str).
             # In this case the Field entries must be successfully comparable to
             # Str
-            return other.validate(self.value)
+            try:
+                other.validate(self.value)
+            except (TypeError, ValueError) as exc:
+                return False
+            else:
+                return True
         return NotImplemented
 
     def __add__(self, other):
@@ -985,7 +1008,10 @@ class Field(Type):
         return NotImplemented
 
     def validate(self, value):
-        return value == self.value
+        if not value == self.value:
+            raise ValueError(
+                '{value!r} does not equal {self.value!r}'.format(
+                    self=self, value=value))
 
     @property
     def size(self):
@@ -1024,7 +1050,7 @@ class Value(Type):
         return tag.value()
 
     def validate(self, value):
-        return True
+        pass
 
     @property
     def size(self):
@@ -1092,7 +1118,7 @@ class Empty(Type):
         # (after all, there's usually little sense in having a container field
         # which will always be empty in most hierarchical structures). The way
         # this differs from Value is in the additive action.
-        return True
+        pass
 
 
 _empty = Empty()

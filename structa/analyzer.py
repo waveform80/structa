@@ -497,12 +497,14 @@ class Analyzer:
                     yield from self._extract(key, [head] + tail)
             else:
                 for key, value in it.items():
-                    if head.validate(key):
-                        yield from self._extract(value, tail)
-                    else:
+                    try:
+                        head.validate(key)
+                    except (TypeError, ValueError) as exc:
                         warnings.warn(ValidationWarning(
-                            "failed to validate {key} against {head!r}"
-                            .format(key=key, head=head)))
+                            "failed to validate {key} against {head!r}: {exc!r}"
+                            .format(key=key, head=head, exc=exc)))
+                    else:
+                        yield from self._extract(value, tail)
         else:
             # keys
             if self._progress is not None:
@@ -530,13 +532,15 @@ class Analyzer:
                     assert head.optional, "mandatory field missing"
             else:
                 for field, value in enumerate(it):
-                    if head.validate(field):
-                        yield from self._extract(value, tail)
-                    else:
+                    try:
+                        head.validate(field)
+                    except (TypeError, ValueError) as exc:
                         # XXX Can this ever get triggered?
                         assert False, (
                             "failed to validate field {field} against {head!r}"
                             .format(field=field, head=head))
+                    else:
+                        yield from self._extract(value, tail)
         else:
             yield from range(len(it))
 
