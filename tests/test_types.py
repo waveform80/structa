@@ -15,6 +15,20 @@ from structa.types import *
 from structa.xml import xml
 
 
+def compare_etree(elem1, elem2):
+    return (
+        elem1.tag == elem2.tag and
+        (elem1.text or '') == (elem2.text or '') and
+        (elem1.tail or '') == (elem2.tail or '') and
+        elem1.attrib == elem2.attrib and
+        len(elem1) == len(elem2) and
+        all(
+            compare_etree(child1, child2)
+            for child1, child2 in zip(elem1, elem2)
+        )
+    )
+
+
 def test_stats():
     s = Stats.from_sample(Counter(range(10)))
     assert s == Stats(Counter(range(10)), 10, 0, 2, 5, 7, 9)
@@ -33,7 +47,8 @@ def test_stats():
 
 def test_stats_xml():
     s1 = Stats.from_sample(Counter(range(10)))
-    assert tostring(xml(s1)) == tostring(fromstring(
+    x1 = xml(s1)
+    x2 = fromstring(
         '<stats>'
             '<summary values="10" count="10" unique="unique">'
                 '<min>0</min><q1>2</q1><q2>5</q2><q3>7</q3><max>9</max>'
@@ -48,7 +63,8 @@ def test_stats_xml():
                 '</graph>'
             '</summary>'
         '</stats>'
-    ))
+    )
+    assert compare_etree(x1, x2)
 
 
 def test_stats_merge():
@@ -219,20 +235,29 @@ def test_dict_disimilar_matches():
     assert pattern_a != pattern_b
     assert pattern_b != pattern_a
     # Just to cover all lines in zip_dict_fields (which won't otherwise be
-    # covered because equality will always terminate early)
-    assert list(zip_dict_fields(pattern_a.content, pattern_b.content)) == [
+    # covered because equality will always terminate early). We're sorting here
+    # to deal with odd/old Python versions where dicts are unordered as there
+    # is an implicit assumption in zip_dict_fields that the fields iterate in
+    # the order defined
+    def key_func(t):
+        a, b = t
+        return (
+            '' if a is None else a.key.value,
+            '' if b is None else b.key.value,
+        )
+    assert sorted(zip_dict_fields(pattern_a.content, pattern_b.content), key=key_func) == [
+        (None, pattern_b.content[0]),
+        (None, pattern_b.content[2]),
+        (None, pattern_b.content[1]),
         (pattern_a.content[0], None),
         (pattern_a.content[1], None),
-        (None, pattern_b.content[0]),
-        (None, pattern_b.content[1]),
-        (None, pattern_b.content[2]),
     ]
-    assert list(zip_dict_fields(pattern_b.content, pattern_a.content)) == [
-        (pattern_b.content[0], None),
-        (pattern_b.content[1], None),
-        (pattern_b.content[2], None),
+    assert sorted(zip_dict_fields(pattern_b.content, pattern_a.content), key=key_func) == [
         (None, pattern_a.content[0]),
         (None, pattern_a.content[1]),
+        (pattern_b.content[0], None),
+        (pattern_b.content[2], None),
+        (pattern_b.content[1], None),
     ]
 
 
