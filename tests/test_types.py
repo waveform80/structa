@@ -8,7 +8,7 @@ import datetime as dt
 from collections import namedtuple, Counter
 
 import pytest
-from lxml.etree import tostring, iselement
+from lxml.etree import fromstring, tostring, iselement
 
 from structa.chars import *
 from structa.types import *
@@ -33,7 +33,7 @@ def test_stats():
 
 def test_stats_xml():
     s1 = Stats.from_sample(Counter(range(10)))
-    assert tostring(xml(s1), encoding='unicode') == (
+    assert tostring(xml(s1)) == tostring(fromstring(
         '<stats>'
             '<summary values="10" count="10" unique="unique">'
                 '<min>0</min><q1>2</q1><q2>5</q2><q3>7</q3><max>9</max>'
@@ -48,7 +48,7 @@ def test_stats_xml():
                 '</graph>'
             '</summary>'
         '</stats>'
-    )
+    ))
 
 
 def test_stats_merge():
