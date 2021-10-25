@@ -28,21 +28,19 @@ version = release
 
 # -- General configuration ---------------------------------------------------
 
+needs_sphinx = '1.4.0'
+
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.imgmath',
 ]
 
 if on_rtd:
-    needs_sphinx = '1.4.0'
-    extensions.append('sphinx.ext.imgmath')
-    imgmath_image_format = 'svg'
     tags.add('rtd')
-else:
-    # FIXME limit to the debian package build only
-    extensions.append('sphinx.ext.mathjax')
-    mathjax_path = '/usr/share/javascript/mathjax/MathJax.js?config=TeX-AMS_HTML'
+
+imgmath_image_format = 'svg'
 
 templates_path = ['_templates']
 master_doc = 'index'
