@@ -604,7 +604,44 @@ def test_analyze_merge_trivial():
     assert struct == merged
 
 
-def test_analyze_merge():
+def test_analyze_merge_tuples():
+    data = {
+        (i, i + 1): (chr(ord('a') + i), chr(ord('a') + i + 1))
+        for i in range(25)
+    }
+    a = Analyzer()
+    result = a.merge(a.analyze(data))
+    print(result)
+    assert a.merge(a.analyze(data)) == Dict(
+        sample=[data],
+        content=[
+            DictField(
+                Tuple(data.keys(), content=[
+                    TupleField(
+                        Field(0, False),
+                        Int([k[0] for k in data])
+                    ),
+                    TupleField(
+                        Field(1, False),
+                        Int([k[1] for k in data])
+                    ),
+                ]),
+                Tuple(data.values(), content=[
+                    TupleField(
+                        Field(0, False),
+                        Str([v[0] for v in data.values()], pattern=[ident_first])
+                    ),
+                    TupleField(
+                        Field(1, False),
+                        Str([v[1] for v in data.values()], pattern=[ident_first])
+                    ),
+                ])
+            )
+        ]
+    )
+
+
+def test_analyze_merge_dict():
     releases = [
         'precise',
         'raring',
@@ -625,7 +662,6 @@ def test_analyze_merge():
             'name': release,
             'numbers': [
                 random.randint(0, 10)
-                # XXX What about the empty case?
                 for i in range(random.randint(1, 100))
             ],
         }
@@ -667,5 +703,48 @@ def test_analyze_merge():
                     ]
                 )
             )
+        ]
+    )
+
+
+def test_analyze_merge_redo():
+    data = {
+        'id{i}'.format(i=i): {
+            'count': i,
+            'values': {
+                chr(ord('a') + j): random.randint(1000, 2000)
+                for j in range(i)
+            }
+        }
+        for i in range(10)
+    }
+    a = Analyzer()
+    assert a.merge(a.analyze(data)) == Dict(
+        sample=[data],
+        content=[
+            DictField(
+                Str(data.keys(), pattern=[CharClass('i'), CharClass('d'), AnyChar()]),
+                Dict(
+                    sample=data.values(),
+                    content=[
+                        DictField(
+                            Field('count', False),
+                            Int([d['count'] for d in data.values()])
+                        ),
+                        DictField(
+                            Field('values', False),
+                            Dict(
+                                sample=[d['values'] for d in data.values()],
+                                content=[
+                                    DictField(
+                                        Str([k for d in data.values() for k in d['values']], pattern=[AnyChar()]),
+                                        Int([i for d in data.values() for i in d['values'].values()])
+                                    ),
+                                ]
+                            )
+                        ),
+                    ]
+                )
+            ),
         ]
     )

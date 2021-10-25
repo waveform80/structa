@@ -303,11 +303,8 @@ class Analyzer:
                     for item in path.content
                 ])
         else:
-            if self._progress is not None:
-                if isinstance(path, Field):
-                    self._progress.update(path.count)
-                elif isinstance(path, Scalar):
-                    self._progress.update(path.values.card)
+            if self._progress is not None and isinstance(path, Scalar):
+                self._progress.update(path.values.card)
             return path
 
     def _merge_dict(self, path):
@@ -356,23 +353,15 @@ class Analyzer:
         them.
         """
         if isinstance(path, Dict):
-            assert path.content, 'empty Dict.content during _merge_redo'
-            if isinstance(path.content[0].value, Redo):
-                assert len(path.content) == 1, 'more than one Redo'
-                # Redo cannot contain Redo, so we don't need to worry about
-                # recursing down here
-                value = self._analyze(
-                    path.content[0].value.sample, (), threshold=0)
-                assert isinstance(value, List), 'Redo returned non-List'
-                assert len(value.content) == 1, 'Redo returned multiples'
-                return path.with_content([
-                    DictField(path.content[0].key, value.content[0])
-                ])
-            else:
-                return path.with_content([
-                    DictField(field.key, self._merge_redo(field.value))
-                    for field in path.content
-                ])
+            return path.with_content([
+                DictField(
+                    field.key,
+                    self._analyze(field.value.sample, (), threshold=0).content[0]
+                    if isinstance(field.value, Redo) else
+                    self._merge_redo(field.value)
+                )
+                for field in path.content
+            ])
         elif isinstance(path, Container):
             return path.with_content([
                 self._merge_redo(item)
@@ -532,15 +521,8 @@ class Analyzer:
                     assert head.optional, "mandatory field missing"
             else:
                 for field, value in enumerate(it):
-                    try:
-                        head.validate(field)
-                    except (TypeError, ValueError) as exc:
-                        # XXX Can this ever get triggered?
-                        assert False, (
-                            "failed to validate field {field} against {head!r}"
-                            .format(field=field, head=head))
-                    else:
-                        yield from self._extract(value, tail)
+                    head.validate(field)
+                    yield from self._extract(value, tail)
         else:
             yield from range(len(it))
 

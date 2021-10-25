@@ -1034,7 +1034,7 @@ class Value(Type):
     def __add__(self, other):
         if isinstance(other, Type):
             result = copy(self)
-            result.sample = self.sample + other.sample
+            result.sample = list(self.sample) + list(other.sample)
             return result
         return NotImplemented
 
