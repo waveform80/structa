@@ -246,7 +246,7 @@ separate JSON file:
 .. literalinclude:: examples/air-quality-multi.py
    :caption: air-quality-multi.py
    :start-at: for location in data:
-   :emphasize-lines: 2-7
+   :emphasize-lines: 2-5
 
 We can pass all the files as inputs to structa simultaneously, which will cause
 it to assume that they should all be processed as if they have comparable
