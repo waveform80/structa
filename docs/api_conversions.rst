@@ -10,8 +10,6 @@ structa.conversions
 
 .. module:: structa.conversions
 
-.. autofunction:: some
-
 .. autofunction:: try_conversion
 
 .. autofunction:: parse_bool

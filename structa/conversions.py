@@ -12,29 +12,6 @@ from dateutil.relativedelta import relativedelta
 from .collections import Counter, FrozenCounter
 
 
-def some(iterable, threshold=0):
-    """
-    Similar to :func:`all` but somewhat less stringent, :func:`some` tests
-    whether all items in *iterable* are :data:`True`, excepting *threshold*
-    items.
-
-    By default, *threshold* is 0 which means :func:`some` is equivalent to
-    :func:`all`. However, if *threshold* is set to 1 then one item may be
-    :data:`False` provided all others are :data:`True` (or more precisely, the
-    function will exit early when the count of :data:`False` values exceeds
-    *threshold*).
-    """
-    if threshold > 0:
-        for item in iterable:
-            if not item:
-                threshold -= 1
-                if threshold < 0:
-                    return False
-        return True
-    else:
-        return all(iterable)
-
-
 def try_conversion(sample, conversion, threshold=0):
     """
     Given a :class:`~collections.Counter` *sample* of strings, call the

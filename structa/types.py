@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from operator import attrgetter
 
 from .collections import Counter, FrozenCounter
-from .conversions import some, try_conversion, parse_bool
+from .conversions import try_conversion, parse_bool
 from .format import format_int, format_repr, format_sample
 from .xml import ElementFactory, xml, merge_siblings
 
