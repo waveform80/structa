@@ -4,9 +4,10 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-import lxml.etree as et
 from copy import copy
 from pkg_resources import resource_stream
+
+import lxml.etree as et
 
 from . import ui
 from .format import pairwise

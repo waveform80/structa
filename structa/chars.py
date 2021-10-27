@@ -4,7 +4,6 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-import re
 import sys
 
 from .format import format_chars

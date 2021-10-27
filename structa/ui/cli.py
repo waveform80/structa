@@ -8,7 +8,7 @@ import os
 import sys
 import argparse
 import warnings
-from datetime import datetime, timedelta
+from datetime import datetime
 from fractions import Fraction
 
 from blessings import Terminal
