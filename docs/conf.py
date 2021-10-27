@@ -75,6 +75,7 @@ pygments_style = 'default'
 html_title = '{project} {version} Documentation'.format(
     project=project, version=version)
 html_static_path = ['_static']
+html_extra_path = ['_html']
 manpages_url = 'https://manpages.ubuntu.com/manpages/focal/en/man{section}/{page}.{section}.html'
 
 # Hack to make wide tables work properly in RTD
