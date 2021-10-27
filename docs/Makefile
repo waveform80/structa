@@ -121,7 +121,7 @@ preview:
 	../scripts/previewer $(BUILDDIR)/html
 
 images/types.dot: $(PY_SOURCES)
-	../scripts/class_graph -i Type -i Stats -x SourcesList > $@
+	../scripts/class_graph -i Type -i Stats -x Fields -x SourcesList -x Redo > $@
 
 %.svg: %.mscgen
 	mscgen -T svg -o $@ $<
