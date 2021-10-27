@@ -115,7 +115,7 @@ $(DIST_WHEEL): $(PY_SOURCES) $(SUBDIRS)
 
 release:
 	$(MAKE) clean
-	test -z "$(shell git status --ignored --porcelain)"
+	test -z "$(shell git status --porcelain)"
 	git tag -s release-$(VER) -m "Release $(VER)"
 	git push origin release-$(VER)
 
