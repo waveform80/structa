@@ -9,12 +9,49 @@ digraph classes {
 
     /* Abstract classes */
     node [color="#9ec6e0", fontcolor="#000000"]
-    
+    Container;
+    Repr;
+    Scalar;
+    Type;
 
     /* Concrete classes */
     node [color="#2980b9", fontcolor="#ffffff"];
-    
+    Bool;
+    DateTime;
+    Dict;
+    DictField;
+    Empty;
+    Field;
+    Float;
+    Int;
+    List;
+    NumRepr;
+    Stats;
+    Str;
+    StrRepr;
+    Tuple;
+    TupleField;
+    URL;
+    Value;
 
     /* Edges */
-    
+    Bool->Int;
+    Container->Type;
+    DateTime->Scalar;
+    Dict->Container;
+    DictField->Type;
+    Empty->Type;
+    Field->Type;
+    Float->Scalar;
+    Int->Float;
+    List->Container;
+    NumRepr->Repr;
+    Repr->Type;
+    Scalar->Type;
+    Str->Scalar;
+    StrRepr->Repr;
+    Tuple->Container;
+    TupleField->Type;
+    URL->Str;
+    Value->Type;
 }
