@@ -11,6 +11,16 @@ Changelog
 .. currentmodule:: structa
 
 
+Release 0.3 (2021-10-27)
+========================
+
+* Fixed dictionary merging of scalar and field keys (`#19`_)
+* Wrote full documentation including tutorials and API reference
+* Lots of other minor fixes ...
+
+.. _#19: https://github.com/waveform80/structa/issues/19
+
+
 Release 0.2.1 (2021-08-17 ... later)
 ====================================
 
