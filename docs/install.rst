@@ -20,7 +20,7 @@ For Ubuntu Linux, it is simplest to install from the `author's PPA`_ as follows
 
 .. code-block:: console
 
-    $ sudo add-apt-repository ppa://waveform/ppa
+    $ sudo add-apt-repository ppa://waveform/structa
     $ sudo apt update
     $ sudo apt install structa
 
