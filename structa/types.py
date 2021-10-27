@@ -24,9 +24,52 @@ tag = ElementFactory()
 
 class Stats:
     """
-    Stores cardinality, minimum, maximum, and (high) median of a sampling of
+    Stores cardinality, minimum, maximum, and (high) median of a *sample* of
     numeric values (or lengths of strings or containers), along with the
     specified sample of values.
+
+    Typically instances of this class are constructed via the
+    :meth:`from_sample` or :meth:`from_lengths` class methods rather than
+    directly. However, instances can also be added to other instances to
+    generate statistics for the combined *sample* set. Instances may also be
+    compared for equality.
+
+    .. attribute:: card
+        :type: int
+
+        The number of items in the :attr:`sample` that the statistics were
+        calculated from.
+
+    .. attribute:: q1
+        :type: int | float | str | datetime.datetime | ...
+
+        The first (lower) quartile of the :attr:`sample`.
+
+    .. attribute:: q2
+        :type: int | float | str | datetime.datetime | ...
+
+        The second quartile (aka the :attr:`median`) of the :attr:`sample`.
+
+    .. attribute:: q3
+        :type: int | float | str | datetime.datetime | ...
+
+        The third (upper) quartile of the :attr:`sample`.
+
+    .. attribute:: max
+        :type: int | float | str | datetime.datetime | ...
+
+        The largest value in the :attr:`sample`.
+
+    .. attribute:: min
+        :type: int | float | str | datetime.datetime | ...
+
+        The smallest value in the :attr:`sample`.
+
+    .. attribute:: sample
+        :type: structa.collections.FrozenCounter
+
+        The sample data that the statistics were calculated from. This is
+        always an instance of :class:`~structa.collections.FrozenCounter`.
     """
     __slots__ = ('sample', 'card', 'min', 'q1', 'q2', 'q3', 'max', 'unique')
 
@@ -34,6 +77,7 @@ class Stats:
         if not isinstance(sample, FrozenCounter):
             assert isinstance(sample, Counter)
             sample = FrozenCounter.from_counter(sample)
+        assert min <= q1 <= q2 <= q3 <= max
         self.sample = sample
         self.card = card
         self.min = min
@@ -132,6 +176,12 @@ class Stats:
 
     @classmethod
     def from_sample(cls, sample):
+        """
+        Given an iterable of *sample* values, which must be of a homogeneous
+        comparable type (e.g. :class:`int`, :class:`str`, :class:`float`),
+        construct an instance after calculating the minimum, maximum, and
+        quartile values of the *sample*.
+        """
         if not isinstance(sample, (Counter, FrozenCounter)):
             sample = FrozenCounter(sample)
         assert sample
@@ -152,21 +202,52 @@ class Stats:
         return cls(sample, card, *summary)
 
     @classmethod
-    def from_lengths(cls, values):
-        if isinstance(values, (Counter, FrozenCounter)):
+    def from_lengths(cls, sample):
+        """
+        Given an iterable of *sample* values, which must be of a homogeneous
+        compound type (e.g. :class:`str`, :class:`tuple`), construct an
+        instance after calculating the :func:`len` of each item of the
+        *sample*, and then the minimum, maximum, and quartile values of the
+        lengths.
+        """
+        if isinstance(sample, (Counter, FrozenCounter)):
             lengths = Counter()
-            for item, count in values.items():
+            for item, count in sample.items():
                 lengths[len(item)] += count
         else:
-            lengths = FrozenCounter(len(item) for item in values)
+            lengths = FrozenCounter(len(item) for item in sample)
         return cls.from_sample(lengths)
 
     @property
     def median(self):
+        """
+        An alias for the second quartile, :attr:`q2`.
+        """
         return self.q2
 
 
 class Type:
+    """
+    The abstract base class of all types recognized by structa.
+
+    This class ensures that instances are hashable (can be used as keys in
+    dictionaries), have a reasonable :func:`repr` value for ease of use at the
+    `REPL`_, can be passed to the :func:`~structa.xml.xml` function.
+
+    However, the most important thing implemented by this base class is the
+    equality test which can be used to test whether a given type is
+    "compatible" with another type. The base test implemented at this level is
+    that one type is compatible with another if one is a sub-class of the
+    other.
+
+    Hence, :class:`Str` is compatible with :class:`Str` as they are the same
+    class (and hence one is, redundantly, a sub-class of the other). And
+    :class:`Int` is compatible with :class:`Float` as it is a sub-class of the
+    latter. However :class:`Int` is not compatbile with :class:`Str` as both
+    descend from :class:`Scalar` and are siblings rather than parent-child.
+
+    .. _REPL: https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop
+    """
     __slots__ = ()
 
     def __repr__(self):
@@ -210,6 +291,35 @@ class Type:
 
 
 class Container(Type):
+    """
+    Abstract base of all types that can contain other types. Constructed with a
+    *sample* of values, and an optional definition of *content*.
+
+    This is the base class of :class:`List`, :class:`Tuple`, and :class:`Dict`.
+    Note that it is *not* the base class of :class:`Str` as, although that is a
+    compound type, it cannot *contain other types*; structa treats :class:`Str`
+    as a scalar type.
+
+    :class:`Container` extends :class:`Type` by permitting instances to be
+    added to (compatible, by equality) instances, combining their
+    :attr:`content` appropriately.
+
+    .. attribute:: content
+        :type: list[Type]
+
+        A list of :class:`Type` descendents representing the content of
+        this instance.
+
+    .. attribute:: lengths
+        :type: Stats
+
+        The :class:`Stats` of the lengths of the :attr:`sample` values.
+
+    .. attribute:: sample
+        :type: [list] | [tuple] | [dict]
+
+        The sample of values that this instance represents.
+    """
     __slots__ = ('lengths', 'sample', 'content')
 
     def __init__(self, sample, content=None):
@@ -254,6 +364,10 @@ class Container(Type):
         return zip(self.content, other.content)
 
     def with_content(self, content):
+        """
+        Return a new copy of this container with the :attr:`content` replaced
+        with *content*.
+        """
         result = copy(self)
         result.content = content
         return result
@@ -266,6 +380,21 @@ class Container(Type):
 
 
 class Dict(Container):
+    """
+    Represents mappings (or dictionaries).
+
+    This concrete refinement of :class:`Container` uses :class:`DictField`
+    instances in its :attr:`~Container.content` list.
+
+    In the case that a mapping is analyzed as a "record" mapping (of fields to
+    values), the :attr:`~Container.content` list will contain one or more
+    :class:`DictField` instances, for which the :attr:`~DictField.key`
+    attribute(s) will be :class:`Field` instances.
+
+    However, if the mapping is analyzed as a "table" mapping (of keys to
+    records), the :attr:`~Container.content` list will contain a single
+    :class:`DictField` instance mapping the key's type to the value structure.
+    """
     __slots__ = ('similarity_threshold',)
 
     def __init__(self, sample, content=None, *, similarity_threshold=0.5):
@@ -334,12 +463,35 @@ class Dict(Container):
                                similarity_threshold=self.similarity_threshold)
 
     def validate(self, value):
+        """
+        Validate that *value* (which must be a :class:`dict`) matches the
+        analyzed mapping structure.
+
+        :raises TypeError: if *value* is not a :class:`dict`
+        """
         if not isinstance(value, dict):
             raise TypeError('{value!r} is not a dictionary'.format(value=value))
-        # XXX Also needs refining for keys present
+        # XXX Also needs refining for keys present/subordinate structures
 
 
 class DictField(Type):
+    """
+    Represents a single mapping within a :class:`Dict`, from the :attr:`key` to
+    its corresponding :attr:`value`. For example, a :class:`Field` of a record
+    mapping to some other type, or a generic :class:`Str` mapping to an
+    :class:`Int` value.
+
+    .. attribute:: key
+        :type: Type
+
+        The :class:`Type` descendent representing a single key in the mapping.
+        This is usually a :class:`Scalar` descendent, or a :class:`Field`.
+
+    .. attribute:: value
+        :type: Type
+
+        The :class:`Type` descendent representing a value in the mapping.
+    """
     __slots__ = ('key', 'value')
 
     def __init__(self, key, value=None):
@@ -375,6 +527,16 @@ class DictField(Type):
 
 
 class Tuple(Container):
+    """
+    Represents sequences of heterogeneous types (typically tuples).
+
+    This concrete refinement of :class:`Container` uses :class:`TupleField`
+    instances in its :attr:`~Container.content` list.
+
+    Tuples are typically the result of an analysis of some homogeneous outer
+    sequence (usually a :class:`List` though sometimes a :class:`Dict`) that
+    contains heterogeneous sequences (the :class:`Tuple` instance).
+    """
     __slots__ = ()
 
     def __str__(self):
@@ -396,6 +558,14 @@ class Tuple(Container):
         return zip_tuple_fields(self.content, other.content)
 
     def validate(self, value):
+        """
+        Validate that *value* (which must be a :class:`tuple`) matches the
+        analyzed mapping structure.
+
+        :raises TypeError: if *value* is not a :class:`tuple`
+        :raises ValueError: if *value* is not within the length limits of the
+                            sampled values
+        """
         if not isinstance(value, tuple):
             raise TypeError('{value!r} is not a tuple'.format(value=value))
         if not self.lengths.min <= len(value) <= self.lengths.max:
@@ -406,6 +576,20 @@ class Tuple(Container):
 
 
 class TupleField(Type):
+    """
+    Represents a single field within a :class:`Tuple`, with the :attr:`index`
+    (an integer number) and its corresponding :attr:`value`.
+
+    .. attribute:: index
+        :type: int
+
+        The index of the field within the tuple.
+
+    .. attribute:: value
+        :type: Type
+
+        The :class:`Type` descendent representing a value in the tuple.
+    """
     __slots__ = ('index', 'value')
 
     def __init__(self, index, value=None):
@@ -444,6 +628,10 @@ class TupleField(Type):
 
 
 class List(Container):
+    """
+    Represents sequences of homogeneous types. This only ever has a single
+    :class:`Type` descendent in its :attr:`~Container.content` list.
+    """
     __slots__ = ()
 
     def __str__(self):
@@ -469,6 +657,12 @@ class List(Container):
         return NotImplemented
 
     def validate(self, value):
+        """
+        Validate that *value* (which must be a :class:`list`) matches the
+        analyzed mapping structure.
+
+        :raises TypeError: if *value* is not a :class:`list`
+        """
         if not isinstance(value, list):
             raise TypeError('{value!r} is not a list'.format(value=value))
 
@@ -482,6 +676,18 @@ class SourcesList(List):
 
 
 class Scalar(Type):
+    """
+    Abstract base of all types that cannot contain other types. Constructed
+    with a *sample* of values.
+
+    This is the base class of :class:`Float` (from which :class:`Int` and then
+    :class:`Bool` descend), :class:`Str`, and :class:`DateTime`.
+
+    .. attribute:: values
+        :type: Stats
+
+        The :class:`Stats` of the :attr:`sample` values.
+    """
     __slots__ = ('values',)
 
     def __init__(self, sample):
@@ -507,6 +713,10 @@ class Scalar(Type):
 
     @property
     def sample(self):
+        """
+        A sequence of the sample values that the instance was constructed from
+        (this will not be the original sequence, but one derived from that).
+        """
         return self.values.sample.elements()
 
     @property
@@ -515,12 +725,23 @@ class Scalar(Type):
 
 
 class Float(Scalar):
+    """
+    Represents scalar floating-point values in datasets. Constructed with a
+    *sample* of values.
+    """
     __slots__ = ()
 
     @classmethod
-    def from_strings(cls, iterable, pattern, bad_threshold=0):
+    def from_strings(cls, sample, pattern, bad_threshold=0):
+        """
+        Class method for constructing an instance wrapped in a :class:`StrRepr`
+        to indicate a string representation of a set of floating-point values.
+        Constructed with an *sample* of strings, a *pattern* (which currently
+        must simply be "f"), and a *bad_threshold* of values which are
+        permitted to fail conversion.
+        """
         return StrRepr(
-            cls(try_conversion(iterable, float, bad_threshold)),
+            cls(try_conversion(sample, float, bad_threshold)),
             pattern=pattern)
 
     def __str__(self):
@@ -531,6 +752,13 @@ class Float(Scalar):
         return tag.float(iter(super().__xml__()))
 
     def validate(self, value):
+        """
+        Validate that *value* (which must be a :class:`float`) lies within the
+        range of sampled values.
+
+        :raises TypeError: if *value* is not a :class:`float`
+        :raises ValueError: if *value* is outside the range of sampled values
+        """
         if not isinstance(value, float):
             raise TypeError('{value!r} is not a float'.format(value=value))
         if not self.values.min <= value <= self.values.max:
@@ -540,6 +768,10 @@ class Float(Scalar):
 
 
 class Int(Float):
+    """
+    Represents scalar integer values in datasets. Constructed with a *sample*
+    of values.
+    """
     __slots__ = ()
 
     # NOTE: Int is a subclass of Float partly to provide a rough immitation of
@@ -547,7 +779,14 @@ class Int(Float):
     # pattern to compare equal to a Float pattern for the purposes of merging
 
     @classmethod
-    def from_strings(cls, iterable, pattern, bad_threshold=0):
+    def from_strings(cls, sample, pattern, bad_threshold=0):
+        """
+        Class method for constructing an instance wrapped in a :class:`StrRepr`
+        to indicate a string representation of a set of integer values.
+        Constructed with an *sample* of strings, a *pattern* (which may be "d",
+        "o", or "x" to represent the base used in the string representation),
+        and a *bad_threshold* of values which are permitted to fail conversion.
+        """
         base = {
             'o': 8,
             'd': 10,
@@ -555,7 +794,7 @@ class Int(Float):
         }[pattern]
         return StrRepr(
             cls(try_conversion(
-                iterable, partial(int, base=base), bad_threshold)),
+                sample, partial(int, base=base), bad_threshold)),
             pattern=pattern)
 
     def __str__(self):
@@ -568,6 +807,13 @@ class Int(Float):
         return tag.int(iter(super().__xml__()))
 
     def validate(self, value):
+        """
+        Validate that *value* (which must be an :class:`int`) lies within the
+        range of sampled values.
+
+        :raises TypeError: if *value* is not a :class:`int`
+        :raises ValueError: if *value* is outside the range of sampled values
+        """
         if not isinstance(value, int):
             raise TypeError('{value!r} is not an int'.format(value=value))
         if not self.values.min <= value <= self.values.max:
@@ -577,12 +823,26 @@ class Int(Float):
 
 
 class Bool(Int):
+    """
+    Represents scalar boolean values in datasets. Constructed with a *sample*
+    of values.
+    """
     __slots__ = ()
 
     # NOTE: Bool is a subclass of Int; see note in Int for reasons
 
     @classmethod
     def from_strings(cls, iterable, pattern, bad_threshold=0):
+        """
+        Class method for constructing an instance wrapped in a :class:`StrRepr`
+        to indicate a string representation of a set of booleans. Constructed
+        with an *sample* of strings, a *pattern* (which is a string of the form
+        "false|true", i.e. the expected string representations of the
+        :data:`False` and :data:`True` values separated by a bar), and a
+        *bad_threshold* of values which are permitted to fail conversion.
+        """
+        # XXX Urgh ... shouldn't this be a tuple? That would keep the
+        # prototype the same; but is there a reason a pattern has to be a str?
         false, true = pattern.split('|', 1)
         return StrRepr(
             cls(
@@ -600,6 +860,14 @@ class Bool(Int):
         return tag.bool(iter(super().__xml__()))
 
     def validate(self, value):
+        """
+        Validate that *value* is an :class:`int` (with the value 0 or 1), or a
+        :class:`bool`. Raises :exc:`TypeError` or :exc:`ValueError` in the
+        event that *value* fails to validate.
+
+        :raises TypeError: if *value* is not a :class:`bool` or :class:`int`
+        :raises ValueError: if *value* is an :class:`int` that is not 0 or 1
+        """
         if isinstance(value, bool):
             pass
         elif isinstance(value, int):
@@ -611,6 +879,10 @@ class Bool(Int):
 
 
 class DateTime(Scalar):
+    """
+    Represents scalar timestamps (a date, and a time) in datasets. Constructed
+    with a *sample* of values.
+    """
     __slots__ = ()
 
     # NOTE: There are no circumstances in Python where a datetime instance can
@@ -619,6 +891,14 @@ class DateTime(Scalar):
 
     @classmethod
     def from_strings(cls, iterable, pattern, bad_threshold=0):
+        """
+        Class method for constructing an instance wrapped in a :class:`StrRepr`
+        to indicate a string representation of a set of timestamps.
+
+        Constructed with an *sample* of strings, a *pattern* (which must be
+        compatible with :meth:`datetime.datetime.strptime`), and a
+        *bad_threshold* of values which are permitted to fail conversion.
+        """
         conv = lambda s: datetime.strptime(s, pattern)
         return StrRepr(
             cls(try_conversion(iterable, conv, bad_threshold)),
@@ -626,6 +906,17 @@ class DateTime(Scalar):
 
     @classmethod
     def from_numbers(cls, pattern):
+        """
+        Class method for constructing an instance wrapped in a :class:`NumRepr`
+        to indicate a numeric representation of a set of timestamps (e.g. day
+        offset from the UNIX epoch).
+
+        Constructed with an *sample* of number, a *pattern* (which can be a
+        :class:`StrRepr` instance if the numbers are themselves represented as
+        strings, otherwise must be the :class:`Int` or :class:`Float` instance
+        representing the numbers), and a *bad_threshold* of values which are
+        permitted to fail conversion.
+        """
         if isinstance(pattern, StrRepr):
             num_pattern = pattern.content
         else:
@@ -648,6 +939,13 @@ class DateTime(Scalar):
         return tag.datetime(iter(super().__xml__()))
 
     def validate(self, value):
+        """
+        Validate that *value* (which must be a :class:`~datetime.datetime`)
+        lies within the range of sampled values.
+
+        :raises TypeError: if *value* is not a :class:`datetime.datetime`
+        :raises ValueError: if *value* is outside the range of sampled values
+        """
         if not isinstance(value, datetime):
             raise TypeError('{value!r} is not a datetime'.format(value=value))
         if not self.values.min <= value <= self.values.max:
@@ -659,6 +957,25 @@ class DateTime(Scalar):
 
 
 class Str(Scalar):
+    """
+    Represents string values in datasets. Constructed with a *sample* of
+    values, and an optional *pattern* (a sequence of
+    :class:`~structa.chars.CharClass` instances indicating which characters are
+    valid at which position in fixed-length strings).
+
+    .. attribute:: lengths
+        :type: Stats
+
+        The :class:`Stats` of the lengths of the :attr:`sample` values.
+
+    .. attribute:: pattern
+        :type: [structa.chars.CharClass]
+
+        :data:`None` if the string is variable length or has no discernable
+        pattern to its values. Otherwise a sequence of
+        :class:`~structa.chars.CharClass` instances indicating the valid
+        characters at each position of the string.
+    """
     __slots__ = ('lengths', 'pattern')
 
     def __init__(self, sample, pattern=None):
@@ -708,6 +1025,15 @@ class Str(Scalar):
         return NotImplemented
 
     def validate(self, value):
+        """
+        Validate that *value* (which must be a :class:`str`) lies within the
+        range of sampled values and, if :attr:`pattern` is not :data:`None`,
+        that it matches the pattern stored there.
+
+        :raises TypeError: if *value* is not a :class:`str`
+        :raises ValueError: if *value* is outside the range of sampled values
+                            or deviates from the given :attr:`pattern`
+        """
         if not isinstance(value, str):
             raise TypeError('{value!r} is not a str'.format(value=value))
         if not self.values.min <= value <= self.values.max:
@@ -726,11 +1052,35 @@ class Str(Scalar):
 
 
 class Repr(Type):
+    """
+    Abstract base class for representations (string, numeric) of other types.
+    Parent of :class:`StrRepr` and :class:`NumRepr`.
+
+    .. attribute:: content
+        :type: Type
+
+        The :class:`Type` that this instance is a representation of. For
+        example, a string representation of integer numbers would be
+        represented by a :class:`StrRepr` instance with :attr:`content` being a
+        :class:`Int` instance.
+
+    .. attribute:: pattern
+        :type: str | Type | None
+
+        Particulars of the representation. For example, in the case of
+        string representations of integers, this is a string indicating the
+        base ("o", "d", "x"). In the case of a numeric representation of a
+        datetime, this is the :class:`Type` (:class:`Int` or :class:`Float`)
+        of the values.
+    """
     __slots__ = ('content', 'pattern')
 
     def __init__(self, content, pattern=None):
         super().__init__()
         self.content = content
+        # XXX pattern is horribly confusing, type-wise. Should we refine this?
+        # Perhaps it should always be a Type descendent (but then how do we
+        # encode base for str-repr-of-int, etc.)
         self.pattern = pattern
 
     def with_content(self, content):
@@ -757,6 +1107,11 @@ class Repr(Type):
 
 
 class StrRepr(Repr):
+    """
+    A string representation of an inner type. Typically used to wrap
+    :class:`Int`, :class:`Float`, :class:`Bool`, or :class:`DateTime`. Descends
+    from :class:`Repr`.
+    """
     __slots__ = ()
 
     int_bases = {'o': 8, 'd': 10, 'x': 16}
@@ -837,6 +1192,10 @@ class StrRepr(Repr):
 
 
 class NumRepr(Repr):
+    """
+    A numeric representation of an inner type. Typically used to wrap
+    :class:`DateTime`. Descends from :class:`Repr`.
+    """
     __slots__ = ()
 
     def __str__(self):
@@ -877,6 +1236,10 @@ class NumRepr(Repr):
 
 
 class URL(Str):
+    """
+    A specialization of :class:`Str` for representing URLs. Currently does
+    little more than trivial validation of the scheme.
+    """
     __slots__ = ()
 
     def __str__(self):
@@ -890,6 +1253,11 @@ class URL(Str):
         )
 
     def validate(self, value):
+        """
+        Validate that *value* starts with "http://" or "https://"
+
+        :raises ValueError: if *value* does not start with a valid scheme
+        """
         super().validate(value)
         # TODO use urlparse (or split?) and check lots more schemes
         if not value.startswith(('http://', 'https://')):
@@ -897,6 +1265,10 @@ class URL(Str):
 
 
 class Fields(Type):
+    """
+    Internally used to represent all possible fields of a mapping during the
+    first phase of analysis. Should never appear in analysis reuslts, however.
+    """
     __slots__ = ('values',)
 
     def __init__(self, values):
@@ -927,6 +1299,32 @@ class Fields(Type):
 
 
 class Field(Type):
+    """
+    Represents a single key in a :class:`DictField` mapping. This is used by
+    the analyzer when it decides a mapping represents a "record" (a mapping of
+    fields to values) rather than a "table" (a mapping of keys to records).
+
+    Constructed with the *value* of the key, the *count* of mappings that the
+    key appears in, and a flag indicating if the key is *optional* (defaults to
+    :data:`False` for mandatory).
+
+    .. attribute:: value
+        :type: str | int | float | tuple | ...
+
+        The value of the key.
+
+    .. attribute:: count
+        :type: int
+
+        The number of mappings that the key belongs to.
+
+    .. attribute:: optional
+        :type: bool
+
+        If :data:`True`, the key may be ommitted from certain mappings in the
+        data. If :data:`False` (the default), the key always appears in the
+        owning mapping.
+    """
     __slots__ = ('value', 'count', 'optional')
 
     def __init__(self, value, count, optional=False):
@@ -1008,6 +1406,11 @@ class Field(Type):
         return NotImplemented
 
     def validate(self, value):
+        """
+        Validates that *value* matches the expected key value.
+
+        :raises ValueError: if *value* does not match the expected value
+        """
         if not value == self.value:
             raise ValueError(
                 '{value!r} does not equal {self.value!r}'.format(
@@ -1019,6 +1422,14 @@ class Field(Type):
 
 
 class Value(Type):
+    """
+    A descendent of :class:`Type` that represents any arbitrary type at all.
+    This is used when the analyzer comes across a container of a multitude of
+    (incompatible) types, e.g. a list of both strings and integers.
+
+    It compares equal to all other types, and when added to other types, the
+    result is a new :class:`Value` instance.
+    """
     __slots__ = ('sample',)
 
     def __init__(self, sample):
@@ -1050,6 +1461,9 @@ class Value(Type):
         return tag.value()
 
     def validate(self, value):
+        """
+        Trivial validation; always passes, never raises an exception.
+        """
         pass
 
     @property
@@ -1058,6 +1472,10 @@ class Value(Type):
 
 
 class Redo(Value):
+    """
+    Internally used by the analyzer during the merge phase to indicate a
+    set of values that need to be re-analyzed post-merge.
+    """
     __slots__ = ()
 
     def __repr__(self):
@@ -1071,6 +1489,16 @@ class Redo(Value):
 
 
 class Empty(Type):
+    """
+    A descendent of :class:`Type` that represents a container with no content.
+    For example, if the analyzer comes across a field which always contains
+    an empty list, it would be represented as a :class:`List` instance where
+    :attr:`List.content` was a sequence containing an :class:`Empty` instance.
+
+    It compares equal to all other types, and when added to other types, the
+    result is the other type. This allows the merge phase to combine empty
+    lists with a list of integers found at the same level, for example.
+    """
     __slots__ = ()
 
     def __new__(cls):
@@ -1113,11 +1541,19 @@ class Empty(Type):
         return []
 
     def validate(self, value):
-        # This counter-intuitive result is because the Empty value indicates a
-        # lack of type-information rather than a definitely empty container
-        # (after all, there's usually little sense in having a container field
-        # which will always be empty in most hierarchical structures). The way
-        # this differs from Value is in the additive action.
+        """
+        Trivial validation; always passes.
+
+        .. note::
+
+            This counter-intuitive behaviour is because the :class:`Empty`
+            value indicates a lack of type-information rather than a definitely
+            empty container (after all, there's usually little sense in having
+            a container field which will always be empty in most hierarchical
+            structures).
+
+            The way this differs from :class:`Value` is in the additive action.
+        """
         pass
 
 

@@ -52,8 +52,6 @@ below:
 
 .. autoclass:: URL
 
-.. autoclass:: Fields
-
 .. autoclass:: Field
 
 .. autoclass:: Value

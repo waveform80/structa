@@ -23,6 +23,9 @@ def char_range(start, stop):
         CharClass('abc')
         >>> char_range('0', '9')
         CharClass('0123456789')
+
+    :param str start: The inclusive start point of the range
+    :param str stop: The inclusive stop point of the range
     """
     return CharClass({chr(i) for i in range(ord(start), ord(stop) + 1)})
 

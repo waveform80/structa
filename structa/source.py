@@ -20,6 +20,52 @@ except ImportError:
 
 
 class Source:
+    """
+    A generalized data source capable of automatically recognizing certain
+    popular data formats, and guessing character encodings. Constructed with a
+    mandatory file-like object as the *source*, and a multitude of keyword-only
+    options, the decoded content can be access from :attr:`data`
+
+    The *source* must have a :meth:`~io.RawIOBase.read` method which, given a
+    number of bytes to return, returns a :class:`bytes` string up to that
+    length, but has no requirements beyond this. Note that this means files
+    over sockets or pipes are acceptable inputs.
+
+    :param file source:
+        The file-like object to decode (must have a ``read`` method).
+    :param str encoding:
+        The character encoding used in the source, or "auto" (the default) if
+        it should be guessed from a sample of the data.
+    :param bool encoding_strict:
+        If :data:`True` (the default), raise an exception if character decoding
+        errors occur. Otherwise, replace invalid characters silently.
+    :param str format:
+        If "auto" (the default), guess the format of the data source. Otherwise
+        can be explicitly set to "csv", "yaml", or "json" to force parsing of
+        that format.
+    :param str csv_delimiter:
+        If "auto" (the default), attempt to guess the field delimiter when the
+        "csv" format is being decoded using the :class:`csv.Sniffer` class.
+        Comma, semi-colon, space, and tab characters will be attempted.
+        Otherwise must be set to the single character :class:`str` used as the
+        field delimiter (e.g. ",").
+    :param str csv_quotechar:
+        If "auto" (the default), attempt to guess the string delimiter when the
+        "csv" format is being decoded using the :class:`csv.Sniffer` class.
+        Otherwise must be set to the single character :class:`str` used as the
+        string delimiter (e.g. '"').
+    :param bool yaml_safe:
+        If :data:`True` (the default) the "safe" YAML parser from
+        `ruamel.yaml`_ will be used.
+    :param bool json_strict:
+        If :data:`True` (the default), control characters will not be permitted
+        inside decoded strings.
+    :param int sample_limit:
+        The number of bytes to sample from the beginning of the stream when
+        attempting to determine character encoding. Defaults to 1MB.
+
+    .. _ruamel.yaml: https://pypi.org/project/ruamel.yaml/
+    """
     def __init__(self, source, *, encoding='auto', encoding_strict=True,
                  format='auto', csv_delimiter='auto', csv_quotechar='auto',
                  yaml_safe=True, json_strict=True, sample_limit=1048576):
@@ -38,18 +84,30 @@ class Source:
 
     @property
     def encoding(self):
+        """
+        The character encoding detected or specified for the source, e.g.
+        "utf-8".
+        """
         if self._encoding == 'auto':
             self._detect_encoding()
         return self._encoding
 
     @property
     def format(self):
+        """
+        The data format detected or specified for the source, e.g. "csv",
+        "yaml", or "json".
+        """
         if self._format == 'auto':
             self._detect_format()
         return self._format
 
     @property
     def csv_dialect(self):
+        """
+        The :class:`csv.Dialect` used when :attr:`format` is "csv", or
+        :data:`None` otherwise.
+        """
         if self.format == 'csv':
             if self._csv_dialect is None:
                 self._detect_csv_dialect()
@@ -59,6 +117,10 @@ class Source:
 
     @property
     def data(self):
+        """
+        The decoded data. Typically a :class:`list` or :class:`dict` of values,
+        but can be any value representable in the source format.
+        """
         if self._data is None:
             self._load_data()
         return self._data
