@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import sys
 import datetime as dt
 from collections import namedtuple, Counter
 
@@ -797,6 +798,7 @@ def test_datetime_strrepr():
         pattern.validate('1980-01-01 00:00:00')
 
 
+@pytest.mark.skipif(sys.maxsize <= 2**32, reason="requires 64-bit arch")
 def test_datetime_numrepr():
     data = {
         dt.datetime.fromtimestamp(0),
@@ -816,6 +818,7 @@ def test_datetime_numrepr():
         pattern.validate(2000000000000)
 
 
+@pytest.mark.skipif(sys.maxsize <= 2**32, reason="requires 64-bit arch")
 def test_datetime_strrepr_numrepr():
     data = {
         dt.datetime.fromtimestamp(0),
