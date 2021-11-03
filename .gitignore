@@ -19,7 +19,8 @@ man
 
 # Unit test / coverage reports
 coverage
-.cache
-.coverage
+.coverage*
 .tox
+.cache
 .pytest_cache
+.mypy_cache
