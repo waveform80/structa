@@ -175,7 +175,7 @@ def test_source_detect_xml(tmpdir):
 
 def test_source_detect_csv(tmpdir, table):
     filename = str(tmpdir.join('data.csv'))
-    with open(filename, 'w') as f:
+    with open(filename, 'w', encoding='utf-8') as f:
         f.write('\r\n'.join(
             ','.join(
                 '"{value}"'.format(value=value.replace('"', '""'))
