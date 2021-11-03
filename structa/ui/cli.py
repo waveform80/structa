@@ -22,6 +22,11 @@ from ..types import sources_list, SourcesList
 from ..source import Source
 from ..xml import xml, get_transform
 
+try:
+    import argcomplete
+except ImportError:
+    argcomplete = None
+
 
 def main(args=None):
     warnings.simplefilter('ignore', category=ValidationWarning)
@@ -204,6 +209,11 @@ def get_config(args):
         "to be strict and disallow such characters")
 
     parser.set_defaults(sample=b'', csv_dialect=None)
+    if int(os.environ.get('_ARGCOMPLETE', '0')):
+        if argcomplete:
+            argcomplete.autocomplete(parser)
+        else:
+            raise RuntimeError('missing argcomplete')
     return parser.parse_args(args)
 
 
