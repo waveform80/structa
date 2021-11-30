@@ -13,7 +13,7 @@ import configparser
 from datetime import datetime
 from pathlib import Path
 
-on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+on_rtd = os.environ.get('READTHEDOCS', '').lower() == 'true'
 config = configparser.ConfigParser()
 config.read([Path(__file__).parent / '..' / 'setup.cfg'])
 metadata = config['metadata']
@@ -22,7 +22,7 @@ metadata = config['metadata']
 
 project = metadata['name'].title()
 author = metadata['author']
-copyright = '{year} {author}'.format(year=datetime.now().year, author=author)
+copyright = '2018-{now:%Y} {author}'.format(now=datetime.now(), author=author)
 release = metadata['version']
 version = release
 
@@ -96,8 +96,8 @@ latex_elements = {
 latex_documents = [
     (
         'index',            # source start file
-        '{metadata[name]}.tex'.format(metadata=metadata), # filename
-        '{project} {version} Documentation'.format(project=project, version=version), # title
+        project + '.tex',   # target filename
+        html_title,         # title
         author,             # author
         'manual',           # documentclass
         True,               # documents ref'd from toctree only
@@ -109,9 +109,9 @@ latex_show_urls = 'footnote'
 
 # -- Options for epub output -------------------------------------------------
 
-epub_basename = metadata['name']
+epub_basename = project
 epub_author = author
-epub_identifier = 'https://structa.readthedocs.io/'
+epub_identifier = 'https://{metadata[name]}.readthedocs.io/'.format(metadata=metadata)
 epub_show_urls = 'no'
 
 # -- Options for manual page output ------------------------------------------

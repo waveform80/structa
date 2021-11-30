@@ -1,12 +1,12 @@
 # vim: set noet sw=4 ts=4 fileencoding=utf-8:
 
 # External utilities
-PYTHON=python3
-PIP=pip
-PYTEST=pytest
-TWINE=twine
-PYFLAGS=
-DEST_DIR=/
+PYTHON ?= python3
+PIP ?= pip3
+PYTEST ?= pytest
+TWINE ?= twine
+PYFLAGS ?=
+DEST_DIR ?= /
 
 # Calculate the base names of the distribution, the location of all source,
 # documentation, packaging, icon, and executable script files
@@ -39,6 +39,7 @@ all:
 	@echo "make develop - Install symlinks for development"
 	@echo "make test - Run tests"
 	@echo "make doc - Generate HTML and PDF documentation"
+	@echo "make preview - Preview HTML documentation with local server"
 	@echo "make source - Create source package"
 	@echo "make wheel - Generate a PyPI wheel package"
 	@echo "make zip - Generate a source zip package"
@@ -83,8 +84,8 @@ test:
 	$(PYTEST)
 
 clean:
-	rm -fr dist/ build/ man/ .pytest_cache/ .mypy_cache/ $(WHEEL_NAME).egg-info/ tags .coverage
-	for dir in $(SUBDIRS); do \
+	rm -fr build/ dist/ man/ .pytest_cache/ .mypy_cache/ $(WHEEL_NAME).egg-info/ tags .coverage*
+	for dir in docs $(SUBDIRS); do \
 		$(MAKE) -C $$dir clean; \
 	done
 	find $(CURDIR) -name "*.pyc" -delete
