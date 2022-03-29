@@ -2,9 +2,9 @@
 structa
 =======
 
-structa is a small utility for analyzing repeating structures in large data
-sources. Typically this is something like a document oriented database in JSON
-format, or a CSV file of a database dump, or a YAML document.
+structa is a small, semi-magical utility for discerning the "overall structure"
+of large data files. Typically this is something like a document oriented
+database in JSON format, or a CSV file of a database dump, or a YAML document.
 
 
 Usage
@@ -41,17 +41,23 @@ Output::
     }
 
 
-The `Python Package Index`_ (PyPI) provides a JSON API for packages::
+The `Python Package Index`_ (PyPI) provides a JSON API for packages. You can
+feed the JSON of several packages to ``structa`` to get an idea of the overall
+structure of these records (when structa is given multiple inputs on the same
+invocation, it assumes all have a common source)::
 
-    curl -s https://pypi.org/pypi/numpy/json | structa
+    for pkg in numpy scipy pandas matplotlib structa; do
+        curl -s https://pypi.org/pypi/$pkg/json > $pkg.json
+    done
+    structa numpy.json scipy.json pandas.json matplotlib.json structa.json
 
 Output::
 
     {
         'info': { str: value },
-        'last_serial': int range=9.0M,
+        'last_serial': int range=11.9M..13.1M,
         'releases': {
-            str range="0.9.6".."1.9.3": [
+            str range="0.1".."3.5.1": [
                 {
                     'comment_text': str,
                     'digests': {
@@ -63,11 +69,11 @@ Output::
                     'has_sig': bool,
                     'md5_digest': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
                     'packagetype': str range="bdist_wheel".."sdist",
-                    'python_version': str range="2.5".."source",
+                    'python_version': str range="2.4".."source",
                     'requires_python': value,
-                    'size': int range=1.9M..24.5M,
-                    'upload_time': str of timestamp range=2006-12-02 02:07:43..2020-12-25 03:30:00 pattern=%Y-%m-%dT%H:%M:%S,
-                    'upload_time_iso_8601': str of timestamp range=2009-04-06 06:19:25..2020-12-25 03:30:00 pattern=%Y-%m-%dT%H:%M:%S.%f%z,
+                    'size': int range=39.3K..118.4M,
+                    'upload_time': str of timestamp range=2006-01-09 14:02:01..2022-03-10 16:45:20 pattern="%Y-%m-%dT%H:%M:%S",
+                    'upload_time_iso_8601': str of timestamp range=2009-04-06 06:19:25..2022-03-10 16:45:20 pattern="%Y-%m-%dT%H:%M:%S.%f%z",
                     'url': URL,
                     'yanked': bool,
                     'yanked_reason': value
@@ -85,18 +91,20 @@ Output::
                 'filename': str,
                 'has_sig': bool,
                 'md5_digest': str pattern="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-                'packagetype': str range="bdist_wheel" pattern="bdist_wheel",
-                'python_version': str range="cp36".."pp36" pattern="Ip3d",
-                'requires_python': str range="&gt;=3.6" pattern="&gt;=3.6",
-                'size': int range=7.3M..15.4M,
-                'upload_time': str of timestamp range=2020-11-02 15:46:22..2020-11-02 16:18:20 pattern=%Y-%m-%dT%H:%M:%S,
-                'upload_time_iso_8601': str of timestamp range=2020-11-02 15:46:22..2020-11-02 16:18:20 pattern=%Y-%m-%dT%H:%M:%S.%f%z,
+                'packagetype': str range="bdist_wheel".."sdist",
+                'python_version': str range="cp310".."source",
+                'requires_python': value,
+                'size': int range=47.2K..55.6M,
+                'upload_time': str of timestamp range=2021-10-27 23:57:01..2022-03-10 16:45:20 pattern="%Y-%m-%dT%H:%M:%S",
+                'upload_time_iso_8601': str of timestamp range=2021-10-27 23:57:01..2022-03-10 16:45:20 pattern="%Y-%m-%dT%H:%M:%S.%f%z",
                 'url': URL,
                 'yanked': bool,
                 'yanked_reason': value
             }
-        ]
+        ],
+        'vulnerabilities': [ empty ]
     }
+
 
 The `Ubuntu Security Notices`_ database contains the list of all security
 issues in releases of Ubuntu (warning, this one takes some time to analyze and
