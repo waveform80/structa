@@ -12,11 +12,11 @@ structa is distributed in several formats. The following sections detail
 installation on a variety of platforms.
 
 
-Ubuntu Linux
-============
+Ubuntu PPA
+==========
 
-For Ubuntu Linux, it is simplest to install from the `author's PPA`_ as follows
-(this also ensures you are kept up to date as new releases are made):
+For Ubuntu Linux, it may be simplest to install from the `author's PPA`_ as
+follows:
 
 .. code-block:: console
 
@@ -29,6 +29,29 @@ If you wish to remove structa:
 .. code-block:: console
 
     $ sudo apt remove structa
+
+The deb-packaging includes a full man-page and bash-completion facilities.
+Tentative Debian packaging is also on Debian's excellent `salsa`_ service,
+pending submission.
+
+
+Snap
+====
+
+structa is also distributed as a snap:
+
+.. code-block:: console
+
+    $ snap install structa
+
+If you wish to remove structa:
+
+.. code-block:: console
+
+    $ snap remove structa
+
+Note that the snap packaging does not include a man-page or bash-completion
+(because it can't).
 
 
 Microsoft Windows
@@ -96,5 +119,6 @@ And removal can be performed as follows:
     $ pip uninstall structa
 
 
-.. _author's PPA: https://launchpad.net/~waveform/+archive/ppa
+.. _author's PPA: https://launchpad.net/~waveform/+archive/ubuntu/structa
+.. _salsa: https://salsa.debian.org/python-team/packages/structa
 .. _setuptools: https://pypi.python.org/pypi/setuptools/
