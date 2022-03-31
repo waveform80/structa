@@ -109,6 +109,10 @@ def get_config(args):
         "preventing the pattern from being reported; the proportion of "
         '"empty" data permitted in a field (default: %(default)s)')
     parser.add_argument(
+        '-N', '--null-threshold', type=num, metavar='NUM', default='99%',
+        help="The proportion of values permitted to be null without "
+        "preventing type analysis (default: %(default)s)")
+    parser.add_argument(
         '--str-limit', type=num, metavar='NUM', default=20,
         help="The length beyond which only the lengths of strs will be "
         "reported; below this the actual value of the string will be "
@@ -300,6 +304,7 @@ class MyAnalyzer(Analyzer):
         return cls(
             bad_threshold=config.bad_threshold,
             empty_threshold=config.empty_threshold,
+            null_threshold=config.null_threshold,
             field_threshold=config.field_threshold,
             merge_threshold=config.merge_threshold,
             max_numeric_len=config.max_numeric_len,
