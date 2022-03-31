@@ -154,14 +154,15 @@ bad threshold mechanism only applies to bad data *within* a homogenous type
 (typically bad string representations of numeric or boolean types).
 
 
-Missing Data (``--empty-threshold``)
-====================================
+Missing Data (``--empty-threshold`` and ``--null-threshold``)
+=============================================================
 
-Another type of "bad" data commonly encountered is empty strings which are
-typically used to represent *missing* data, and (predictably) structa has
-another knob that can be twiddled for this: :option:`structa
---empty-threshold`. The following script generates a list of strings of
-integers in which most of the strings (~70%) are blank:
+Another type of "bad" data commonly encountered is empty strings and nulls
+which are typically used to represent *missing* data, and (predictably) structa
+has more knobs that can be twiddled for this: :option:`structa
+--empty-threshold` and :option:`structa --null-threshold`. The following script
+generates a list of strings of integers in which most of the strings (~70%) are
+blank:
 
 .. literalinclude:: examples/mostly-blank.py
    :caption: mostly-blank.py
@@ -174,11 +175,13 @@ normal:
     $ python3 mostly-blank.py | structa
     [ str of int range=0..100 pattern="d" ]
 
-This is because the default for :option:`structa --empty-threshold` is 99% or
-0.99. If the proportion of blank strings in a field exceeds the empty
-threshold, the field will simply be marked as a string without any further
-processing. Hence, when we re-run this script with the setting turned down to
-50%, the output changes:
+This is because the default for both :option:`structa --empty-threshold` and
+:option:`structa --null-threshold` is 99% or 0.99.
+
+If the proportion of blank strings in a field exceeds the empty threshold, the
+field will simply be marked as a string without any further processing. Hence,
+when we re-run this script with the setting turned down to 50%, the output
+changes:
 
 .. code-block:: console
 
@@ -190,6 +193,11 @@ processing. Hence, when we re-run this script with the setting turned down to
     For those slightly confused by the above output: structa hasn't lost the
     "100" value, but because it's now considered a string (not a string of
     integers), "100" sorts before "99" alphabetically.
+
+Likewise, if the proportion of null values in a field exceeds the null
+threshold, the field will simply be marked as "value" (an arbitrary mix of
+types), because structa assumes there aren't enough values to accurately
+represent the type of the field.
 
 It is also worth nothing that, by default, structa strips whitespace from
 strings prior to analysis. This is probably not necessary for the vast majority
