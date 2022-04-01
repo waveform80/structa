@@ -148,8 +148,6 @@ class Analyzer:
         If :data:`True`, whitespace is stripped from all strings prior to any
         further analysis.
 
-    :param datetime.datetime epoch:
-
     :type min_timestamp: datetime.datetime or None
     :param min_timestamp:
         The minimum timestamp to use when determining whether floating point
@@ -159,6 +157,10 @@ class Analyzer:
     :param max_timestamp:
         The maximum timestamp to use when determining whether floating point
         values potentially represent epoch-based datetime values.
+
+    :param datetime.datetime epoch:
+        The epoch to use when converting numbers to datetime values. Defaults
+        to the UNIX epoch (1st January, 1970)
 
     :type progress: object or None
     :param progress:
@@ -171,7 +173,8 @@ class Analyzer:
                  null_threshold=Fraction(98, 100), field_threshold=20,
                  merge_threshold=Fraction(50, 100), max_numeric_len=30,
                  strip_whitespace=False, min_timestamp=None,
-                 max_timestamp=None, progress=None):
+                 max_timestamp=None, epoch=datetime.utcfromtimestamp(0),
+                 progress=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.null_threshold = null_threshold
@@ -179,13 +182,16 @@ class Analyzer:
         self.merge_threshold = merge_threshold
         self.max_numeric_len = max_numeric_len
         self.strip_whitespace = strip_whitespace
+        self.epoch = epoch
+        unix_epoch = datetime.utcfromtimestamp(0)
+        offset = int((unix_epoch - self.epoch).total_seconds()) // 86400
         now = datetime.now()
         if min_timestamp is None:
             min_timestamp = now - relativedelta(years=20)
         if max_timestamp is None:
             max_timestamp = now + relativedelta(years=10)
-        self.min_timestamp = min_timestamp.timestamp()
-        self.max_timestamp = max_timestamp.timestamp()
+        self.min_timestamp = min_timestamp.timestamp() + offset
+        self.max_timestamp = max_timestamp.timestamp() + offset
         self._progress = progress
 
     @property
@@ -734,7 +740,7 @@ class Analyzer:
                 isinstance(pattern, (Int, Float)) and
                 in_range(pattern.values.min) and
                 in_range(pattern.values.max)):
-            return DateTime.from_numbers(pattern)
+            return DateTime.from_numbers(pattern, epoch=self.epoch)
         elif (
                 isinstance(pattern, StrRepr) and (
                     (
@@ -745,6 +751,6 @@ class Analyzer:
                 ) and
                 in_range(pattern.content.values.min) and
                 in_range(pattern.content.values.max)):
-            return DateTime.from_numbers(pattern)
+            return DateTime.from_numbers(pattern, epoch=self.epoch)
         else:
             return pattern

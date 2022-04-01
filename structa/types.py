@@ -905,7 +905,7 @@ class DateTime(Scalar):
             pattern=pattern)
 
     @classmethod
-    def from_numbers(cls, pattern):
+    def from_numbers(cls, pattern, epoch=datetime.utcfromtimestamp(0)):
         """
         Class method for constructing an instance wrapped in a :class:`NumRepr`
         to indicate a numeric representation of a set of timestamps (e.g. day
