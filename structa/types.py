@@ -905,11 +905,12 @@ class DateTime(Scalar):
             pattern=pattern)
 
     @classmethod
-    def from_numbers(cls, pattern, epoch=datetime.utcfromtimestamp(0)):
+    def from_numbers(cls, pattern, epoch=None):
         """
         Class method for constructing an instance wrapped in a :class:`NumRepr`
         to indicate a numeric representation of a set of timestamps (e.g. day
-        offset from the UNIX epoch).
+        offset from the UNIX epoch; a differen *epoch* may be specified as
+        a :class:`~datetime.datetime`).
 
         Constructed with an *sample* of number, a *pattern* (which can be a
         :class:`StrRepr` instance if the numbers are themselves represented as
@@ -922,8 +923,13 @@ class DateTime(Scalar):
         else:
             num_pattern = pattern
         dt_counter = Counter()
+        if epoch is None:
+            offset = 0
+        else:
+            unix_epoch = datetime.utcfromtimestamp(0)
+            offset = (unix_epoch - epoch).total_seconds() / 86400
         for value, count in num_pattern.values.sample.items():
-            dt_counter[datetime.fromtimestamp(value)] = count
+            dt_counter[datetime.fromtimestamp(value - offset)] = count
         result = NumRepr(cls(dt_counter), pattern=num_pattern.__class__)
         if isinstance(pattern, StrRepr):
             return pattern.with_content(result)

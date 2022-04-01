@@ -173,8 +173,7 @@ class Analyzer:
                  null_threshold=Fraction(98, 100), field_threshold=20,
                  merge_threshold=Fraction(50, 100), max_numeric_len=30,
                  strip_whitespace=False, min_timestamp=None,
-                 max_timestamp=None, epoch=datetime.utcfromtimestamp(0),
-                 progress=None):
+                 max_timestamp=None, epoch=None, progress=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
         self.null_threshold = null_threshold
@@ -182,9 +181,9 @@ class Analyzer:
         self.merge_threshold = merge_threshold
         self.max_numeric_len = max_numeric_len
         self.strip_whitespace = strip_whitespace
-        self.epoch = epoch
         unix_epoch = datetime.utcfromtimestamp(0)
-        offset = int((unix_epoch - self.epoch).total_seconds()) // 86400
+        self.epoch = unix_epoch if epoch is None else epoch
+        offset = (unix_epoch - self.epoch).total_seconds() / 86400
         now = datetime.now()
         if min_timestamp is None:
             min_timestamp = now - relativedelta(years=20)
@@ -667,7 +666,8 @@ class Analyzer:
         for pattern in FIXED_DATETIME_PATTERNS:
             try:
                 return DateTime.from_strings(items, pattern,
-                                             bad_threshold=bad_threshold)
+                                             bad_threshold=bad_threshold,
+                                             epoch=self.epoch)
             except ValueError:
                 pass
         pattern = []
