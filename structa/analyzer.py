@@ -128,6 +128,11 @@ class Analyzer:
         falling within this threshold will be discounted by the analysis. Valid
         values are between 0 and 1.
 
+    :param numbers.Rational null_threshold:
+        The proportion of values within a field (across repetitive structures)
+        which can be None (null in JSON parlance) without affecting the type
+        match. Valid values are between 0 and 1.
+
     :param int field_threshold:
         The minimum number of fields in a mapping before it will be treated as
         a "table" (a mapping of keys to records) rather than a record (a
