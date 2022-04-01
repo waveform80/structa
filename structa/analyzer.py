@@ -148,6 +148,8 @@ class Analyzer:
         If :data:`True`, whitespace is stripped from all strings prior to any
         further analysis.
 
+    :param datetime.datetime epoch:
+
     :type min_timestamp: datetime.datetime or None
     :param min_timestamp:
         The minimum timestamp to use when determining whether floating point
