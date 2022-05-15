@@ -158,7 +158,8 @@ class Analyzer:
         The maximum timestamp to use when determining whether floating point
         values potentially represent epoch-based datetime values.
 
-    :param datetime.datetime epoch:
+    :type epoch: datetime.datetime or None
+    :param epoch:
         The epoch to use when converting numbers to datetime values. Defaults
         to the UNIX epoch (1st January, 1970)
 
@@ -666,8 +667,7 @@ class Analyzer:
         for pattern in FIXED_DATETIME_PATTERNS:
             try:
                 return DateTime.from_strings(items, pattern,
-                                             bad_threshold=bad_threshold,
-                                             epoch=self.epoch)
+                                             bad_threshold=bad_threshold)
             except ValueError:
                 pass
         pattern = []

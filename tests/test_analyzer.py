@@ -351,7 +351,7 @@ def test_analyze_datetimes():
     start = (now - dt.timedelta(days=50)).timestamp()
     finish = (now + dt.timedelta(days=50)).timestamp()
     data = [
-        dt.datetime.fromtimestamp(n).replace(microsecond=0)
+        dt.datetime.utcfromtimestamp(n).replace(microsecond=0)
         for n in frange(start, finish, step=86400.0)
     ]
     assert Analyzer(bad_threshold=0).analyze(data) == List(
@@ -364,7 +364,7 @@ def test_analyze_datetime_str():
     start = (now - dt.timedelta(days=50)).timestamp()
     finish = (now + dt.timedelta(days=50)).timestamp()
     dates = [
-        dt.datetime.fromtimestamp(n).replace(microsecond=0)
+        dt.datetime.utcfromtimestamp(n).replace(microsecond=0)
         for n in frange(start, finish, step=86400.0)
     ]
     data = [date.strftime('%Y-%m-%d %H:%M:%S') for date in dates]
@@ -400,7 +400,7 @@ def test_analyze_datetime_float():
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
         content=[NumRepr(
-            DateTime(Counter(dt.datetime.fromtimestamp(n) for n in data)),
+            DateTime(Counter(dt.datetime.utcfromtimestamp(n) for n in data)),
             pattern=float)]
     )
 
@@ -414,7 +414,7 @@ def test_analyze_datetime_float_str():
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
         content=[StrRepr(NumRepr(
-            DateTime(Counter(dt.datetime.fromtimestamp(float(n)) for n in data)),
+            DateTime(Counter(dt.datetime.utcfromtimestamp(float(n)) for n in data)),
             pattern=float), pattern='f')]
     )
 
@@ -428,8 +428,8 @@ def test_analyze_datetime_bad_range():
     data = {randtime() for n in range(99)} | {start}
     data = list(data)
     assert Analyzer(bad_threshold=0,
-                    min_timestamp=dt.datetime.fromtimestamp(now),
-                    max_timestamp=dt.datetime.fromtimestamp(finish)
+                    min_timestamp=dt.datetime.utcfromtimestamp(now),
+                    max_timestamp=dt.datetime.utcfromtimestamp(finish)
                     ).analyze(data) == List(
         sample=[data],
         content=[Float(Counter(data))])
@@ -452,7 +452,7 @@ def test_analyze_strs_with_blanks():
     randtime = lambda: random.random() * (finish - start) + start
     # Make 10% of the data blank
     dates = [
-        dt.datetime.fromtimestamp(randtime()).replace(microsecond=0)
+        dt.datetime.utcfromtimestamp(randtime()).replace(microsecond=0)
         for n in range(90)
     ]
     data = [
@@ -472,7 +472,7 @@ def test_analyze_too_many_blanks():
     randtime = lambda: random.random() * (finish - start) + start
     # Make 50% of the data blank
     data = [
-        dt.datetime.fromtimestamp(randtime()).strftime('%Y-%m-%d %H:%M:%S')
+        dt.datetime.utcfromtimestamp(randtime()).strftime('%Y-%m-%d %H:%M:%S')
         for n in range(50)
     ] + ['' for n in range(50)]
     random.shuffle(data)
@@ -488,7 +488,7 @@ def test_analyze_unique_list_with_bad_data():
     randtime = lambda: random.random() * (finish - start) + start
     # Make 0.1% of the data invalid (oh noes! A MySQL dump!)
     dates = {
-        dt.datetime.fromtimestamp(randtime()).replace(microsecond=0)
+        dt.datetime.utcfromtimestamp(randtime()).replace(microsecond=0)
         for n in range(999)
     }
     data = {
@@ -508,7 +508,7 @@ def test_analyze_non_unique_list_with_bad_data():
     finish = now.timestamp()
     randtime = lambda: random.random() * (finish - start) + start
     dates = [
-        dt.datetime.fromtimestamp(randtime()).replace(microsecond=0)
+        dt.datetime.utcfromtimestamp(randtime()).replace(microsecond=0)
         for n in range(100)
     ]
     dates = dates * 10

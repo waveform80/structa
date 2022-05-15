@@ -17,7 +17,7 @@ from pkg_resources import require
 
 from ..analyzer import Analyzer
 from ..errors import ValidationWarning
-from ..conversions import parse_duration_or_timestamp
+from ..conversions import parse_duration_or_timestamp, parse_timestamp
 from ..types import sources_list, SourcesList
 from ..source import Source
 from ..xml import xml, get_transform
@@ -171,6 +171,11 @@ def get_config(args):
         "point fields represent UNIX timestamps (default: %(default)s). Can "
         "be specified as an absolute timestamp (in ISO-8601 format) or a "
         "duration to be added to the current timestamp")
+    parser.add_argument(
+        '--epoch', type=epoch, metavar='WHEN', default='unix',
+        help="The epoch from which datetimes are measured. Can be specified "
+        "as an absolute timestamp (in ISO-8601 format), or one of the special "
+        'strings, "unix" or "excel" (default: %(default)s)')
     parser.add_argument(
         '--max-numeric-len', type=int, metavar='LEN', default=30,
         help="The maximum number of characters that a number, integer or "
@@ -346,6 +351,22 @@ def max_timestamp(s, now=_start):
         return t
     else:
         return now + t
+
+def epoch(s):
+    try:
+        return {
+            # The Excel epoch is defined as 1900-01-01, but that is date "1"
+            # in Excel, rather than "0". Furthermore, for compat. with good
+            # ol' 1-2-3, 1900 was treated (incorrectly) as a leap-year leading
+            # to a +1 offset for all dates after 1900-02-28. Rather than
+            # emulate all that nonsense, we just use 1899-12-30 as the epoch
+            # which is good enough for all detection purposes (which is all
+            # structa cares about anyway)
+            'excel': datetime(1899, 12, 30),
+            'unix': datetime.utcfromtimestamp(0),
+        }[s]
+    except KeyError:
+        return parse_timestamp(s)
 
 def num(s):
     if s.endswith('%'):

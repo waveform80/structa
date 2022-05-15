@@ -801,10 +801,10 @@ def test_datetime_strrepr():
 @pytest.mark.skipif(sys.maxsize <= 2**32, reason="requires 64-bit arch")
 def test_datetime_numrepr():
     data = {
-        dt.datetime.fromtimestamp(0),
-        dt.datetime.fromtimestamp(1),
-        dt.datetime.fromtimestamp(86400),
-        dt.datetime.fromtimestamp(100000),
+        dt.datetime.utcfromtimestamp(0),
+        dt.datetime.utcfromtimestamp(1),
+        dt.datetime.utcfromtimestamp(86400),
+        dt.datetime.utcfromtimestamp(100000),
     }
     numbers = Int(Counter(d.timestamp() for d in data))
     pattern = DateTime.from_numbers(numbers)
@@ -819,12 +819,33 @@ def test_datetime_numrepr():
 
 
 @pytest.mark.skipif(sys.maxsize <= 2**32, reason="requires 64-bit arch")
+def test_datetime_numrepr_epoch():
+    excel_epoch = dt.datetime(1899, 12, 30)
+    offset = (dt.datetime.utcfromtimestamp(0) - excel_epoch).total_seconds() // 86400
+    data = {
+        dt.datetime(1943, 7, 20),
+        dt.datetime(1970, 1, 1),
+        dt.datetime(1976, 1, 1),
+    }
+    numbers = Int(Counter(d.timestamp() + offset for d in data))
+    pattern = DateTime.from_numbers(numbers, epoch=excel_epoch)
+    assert pattern == NumRepr(DateTime(Counter(data)), pattern=Int)
+    pattern.validate(1000)
+    with pytest.raises(TypeError):
+        pattern.validate('1000')
+    with pytest.raises(ValueError):
+        pattern.validate(1200000)
+    with pytest.raises(ValueError):
+        pattern.validate(2000000000000)
+
+
+@pytest.mark.skipif(sys.maxsize <= 2**32, reason="requires 64-bit arch")
 def test_datetime_strrepr_numrepr():
     data = {
-        dt.datetime.fromtimestamp(0),
-        dt.datetime.fromtimestamp(1),
-        dt.datetime.fromtimestamp(86400),
-        dt.datetime.fromtimestamp(100000),
+        dt.datetime.utcfromtimestamp(0),
+        dt.datetime.utcfromtimestamp(1),
+        dt.datetime.utcfromtimestamp(86400),
+        dt.datetime.utcfromtimestamp(100000),
     }
     numbers = StrRepr(Int(Counter(d.timestamp() for d in data)), pattern='d')
     pattern = DateTime.from_numbers(numbers)
@@ -903,10 +924,10 @@ def test_strrepr_add():
 
 def test_numrepr_add():
     data = {
-        dt.datetime.fromtimestamp(0),
-        dt.datetime.fromtimestamp(1),
-        dt.datetime.fromtimestamp(86400),
-        dt.datetime.fromtimestamp(100000),
+        dt.datetime.utcfromtimestamp(0),
+        dt.datetime.utcfromtimestamp(1),
+        dt.datetime.utcfromtimestamp(86400),
+        dt.datetime.utcfromtimestamp(100000),
     }
     numbers = Int(Counter(d.timestamp() for d in data))
     int_pattern = DateTime.from_numbers(numbers)

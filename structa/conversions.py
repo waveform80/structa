@@ -149,6 +149,14 @@ def parse_duration(s):
             raise ValueError('invalid duration {}'.format(s))
 
 
+def parse_timestamp(s):
+    """
+    Convert the string *s* to a :class:`~datetime.datetime`. A
+    :exc:`ValueError` is raised if *s* is not a valid datetime representation.
+    """
+    return parse(s)
+
+
 def parse_duration_or_timestamp(s):
     """
     Convert the string *s* to a :class:`~datetime.datetime` or a
@@ -159,4 +167,4 @@ def parse_duration_or_timestamp(s):
     try:
         return parse_duration(s)
     except ValueError:
-        return parse(s)
+        return parse_timestamp(s)
