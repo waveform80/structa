@@ -9,7 +9,10 @@ import json
 from unittest import mock
 
 import pytest
-from ruamel import yaml
+try:
+    from ruamel import yaml
+except ImportError:
+    yaml = None
 
 from structa.analyzer import ValidationWarning
 from structa.source import Source
@@ -144,6 +147,7 @@ def test_source_json_data(tmpdir, table):
         assert s.data == table
 
 
+@pytest.mark.skipif(yaml is None, reason="Requires ruamel.yaml")
 def test_source_yaml_data(tmpdir, table):
     data_file = str(tmpdir.join('data.yaml'))
     with open(data_file, 'w', encoding='utf-8') as f:
