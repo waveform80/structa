@@ -128,6 +128,11 @@ class Analyzer:
         falling within this threshold will be discounted by the analysis. Valid
         values are between 0 and 1.
 
+    :param numbers.Rational null_threshold:
+        The proportion of values within a field (across repetitive structures)
+        which can be None (null in JSON parlance) without affecting the type
+        match. Valid values are between 0 and 1.
+
     :param int field_threshold:
         The minimum number of fields in a mapping before it will be treated as
         a "table" (a mapping of keys to records) rather than a record (a
@@ -160,12 +165,14 @@ class Analyzer:
         for further details.
     """
     def __init__(self, *, bad_threshold=Fraction(2, 100),
-                 empty_threshold=Fraction(98, 100), field_threshold=20,
+                 empty_threshold=Fraction(98, 100),
+                 null_threshold=Fraction(98, 100), field_threshold=20,
                  merge_threshold=Fraction(50, 100), max_numeric_len=30,
                  strip_whitespace=False, min_timestamp=None,
                  max_timestamp=None, progress=None):
         self.bad_threshold = bad_threshold
         self.empty_threshold = empty_threshold
+        self.null_threshold = null_threshold
         self.field_threshold = field_threshold
         self.merge_threshold = merge_threshold
         self.max_numeric_len = max_numeric_len
@@ -585,6 +592,13 @@ class Analyzer:
                         # dict but there're more than the field threshold
                         return Tuple(items)
 
+                # Ignore null (None) up to the null threshold; in the case
+                # the threshold is exceeded we assume there's not enough data
+                # to even determine the type
+                if None in sample:
+                    if sample[None] / len(items) > self.null_threshold:
+                        return Value(items)
+                    del sample[None]
                 # The following ordering is important; note that bool's domain
                 # is a subset of int's
                 if all(isinstance(value, bool) for value in sample):

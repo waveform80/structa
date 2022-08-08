@@ -15,7 +15,7 @@ Synopsis
 
     structa [-h] [--version] [-f {auto,csv,json,yaml}] [-e ENCODING]
             [--encoding-strict] [--no-encoding-strict]
-            [-F INT] [-M NUM] [-B NUM] [-E NUM] [--str-limit NUM]
+            [-F INT] [-M NUM] [-B NUM] [-E NUM] [-N NUM] [--str-limit NUM]
             [--hide-count] [--show-count] [--hide-lengths] [--show-lengths]
             [--hide-pattern] [--show-pattern]
             [--hide-range] [--show-range {hidden,limits,median,quartiles,graph}]
@@ -90,6 +90,11 @@ Optional Arguments
     The proportion of string values permitted to be empty without preventing
     the pattern from being reported; the proportion of "empty" data permitted
     in a field (default: 99%)
+
+.. option:: -N NUM, --null-threshold NUM
+
+    The proportion of values permitted to be null without preventing type
+    analysis (default: 99%)
 
 .. option:: --str-limit NUM
 

@@ -190,6 +190,24 @@ def test_analyze_dict_bad_data():
         ])
 
 
+def test_analyze_too_many_nulls():
+    data = {str(i): i if i < 50 else None for i in range(100)}
+    assert Analyzer().analyze(data) == Dict(
+        sample=[data], content=[
+            DictField(
+                StrRepr(Int(Counter(range(100))), pattern='d'),
+                Int(Counter(range(50)))
+            )
+        ])
+    assert Analyzer(null_threshold=0).analyze(data) == Dict(
+        sample=[data], content=[
+            DictField(
+                StrRepr(Int(Counter(range(100))), pattern='d'),
+                Value(Counter(range(5)))
+            )
+        ])
+
+
 def test_analyze_dict_of_dicts():
     data = {n: {'foo': n, 'bar': n} for n in range(99)}
     assert Analyzer().analyze(data) == Dict(
