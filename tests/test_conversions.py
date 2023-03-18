@@ -43,6 +43,7 @@ def test_parse_duration():
     assert parse_duration('1h') == relativedelta(hours=1)
     assert parse_duration('1hrs, 5mins') == relativedelta(hours=1, minutes=5)
     assert parse_duration('60 seconds') == relativedelta(minutes=1)
+    assert parse_duration('1s-50ms') == relativedelta(seconds=1, microseconds=-50000)
     with pytest.raises(ValueError):
         parse_duration('foo')
 
