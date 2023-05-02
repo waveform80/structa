@@ -834,7 +834,7 @@ def test_datetime_numrepr_epoch():
     with pytest.raises(TypeError):
         pattern.validate('1000')
     with pytest.raises(ValueError):
-        pattern.validate(1200000)
+        pattern.validate(200000000)
     with pytest.raises(ValueError):
         pattern.validate(2000000000000)
 
