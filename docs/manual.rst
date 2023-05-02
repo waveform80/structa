@@ -20,7 +20,7 @@ Synopsis
             [--hide-pattern] [--show-pattern]
             [--hide-range] [--show-range {hidden,limits,median,quartiles,graph}]
             [--hide-samples] [--show-samples]
-            [--min-timestamp WHEN] [--max-timestamp WHEN]
+            [--min-timestamp WHEN] [--max-timestamp WHEN] [--epoch WHEN ]
             [--max-numeric-len LEN] [--sample-bytes SIZE]
             [--strip-whitespace] [--no-strip-whitespace]
             [--csv-format FIELD[QUOTE]] [--yaml-safe] [--no-yaml-safe]
@@ -144,6 +144,14 @@ Optional Arguments
     represent UNIX timestamps (default: 10 years). Can be specified as an
     absolute timestamp (in ISO-8601 format) or a duration to be added to the
     current timestamp
+
+.. option:: --epoch WHEN
+
+    The epoch from which datetimes are measured. Can be specified as an
+    absolute timestamp (in ISO-8601 format: YYYY-mm-ddTHH:MM:SS), or one of the
+    special strings, "unix" (which is equivalent to 1970-01-01) or
+    "excel" (which is roughly equivalent to 1900-01-01, with some adjustments).
+    The default is "unix"
 
 .. option:: --max-numeric-len LEN
 
