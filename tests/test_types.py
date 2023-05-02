@@ -821,15 +821,19 @@ def test_datetime_numrepr():
 @pytest.mark.skipif(sys.maxsize <= 2**32, reason="requires 64-bit arch")
 def test_datetime_numrepr_epoch():
     excel_epoch = dt.datetime(1899, 12, 30)
-    offset = (dt.datetime.utcfromtimestamp(0) - excel_epoch).total_seconds() // 86400
+    base_epoch = dt.datetime.utcfromtimestamp(0)
+    offset = (excel_epoch - base_epoch).total_seconds()
+    scale = dt.timedelta(days=1).total_seconds()
     data = {
         dt.datetime(1943, 7, 20),
         dt.datetime(1970, 1, 1),
         dt.datetime(1976, 1, 1),
     }
-    numbers = Int(Counter(d.timestamp() + offset for d in data))
-    pattern = DateTime.from_numbers(numbers, epoch=excel_epoch)
-    assert pattern == NumRepr(DateTime(Counter(data)), pattern=Int)
+    numbers = Int(Counter((d.timestamp() - offset) // scale for d in data))
+    pattern = DateTime.from_numbers(numbers, epoch=excel_epoch,
+                                    unit=dt.timedelta(days=1))
+    assert pattern == NumRepr(DateTime(Counter(data)),
+                              pattern=(Int, offset, 86400))
     pattern.validate(1000)
     with pytest.raises(TypeError):
         pattern.validate('1000')
