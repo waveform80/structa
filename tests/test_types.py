@@ -663,15 +663,15 @@ def test_num_repr():
         dt.datetime.utcfromtimestamp(0),
         dt.datetime.utcfromtimestamp(1),
         dt.datetime.utcfromtimestamp(86400),
-    ))), pattern=Int)
-    assert str(pattern) == 'int of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
+    ))), pattern=(Int, 1, 0))
+    assert str(pattern) == 'int seconds after 1970-01-01 of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
     assert xml(pattern).tag == 'intof'
     pattern = NumRepr(DateTime(Counter((
         dt.datetime.utcfromtimestamp(0.0),
         dt.datetime.utcfromtimestamp(1.0),
         dt.datetime.utcfromtimestamp(86400.0),
-    ))), pattern=Float)
-    assert str(pattern) == 'float of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
+    ))), pattern=(Float, 1, 0))
+    assert str(pattern) == 'float seconds after 1970-01-01 of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
     assert xml(pattern).tag == 'floatof'
     assert pattern == pattern + pattern
     assert pattern + pattern == pattern
@@ -808,7 +808,7 @@ def test_datetime_numrepr():
     }
     numbers = Int(Counter(d.timestamp() for d in data))
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == NumRepr(DateTime(Counter(data)), pattern=Int)
+    assert pattern == NumRepr(DateTime(Counter(data)), pattern=(Int, 1, 0))
     pattern.validate(1000)
     with pytest.raises(TypeError):
         pattern.validate('1000')
@@ -833,14 +833,14 @@ def test_datetime_numrepr_epoch():
     pattern = DateTime.from_numbers(numbers, epoch=excel_epoch,
                                     unit=dt.timedelta(days=1))
     assert pattern == NumRepr(DateTime(Counter(data)),
-                              pattern=(Int, offset, 86400))
-    pattern.validate(1000)
+                              pattern=(Int, 86400, offset))
+    pattern.validate(20000)
     with pytest.raises(TypeError):
-        pattern.validate('1000')
+        pattern.validate('20000')
     with pytest.raises(ValueError):
-        pattern.validate(200000000)
+        pattern.validate(100)
     with pytest.raises(ValueError):
-        pattern.validate(2000000000000)
+        pattern.validate(20000000)
 
 
 @pytest.mark.skipif(sys.maxsize <= 2**32, reason="requires 64-bit arch")
@@ -853,7 +853,8 @@ def test_datetime_strrepr_numrepr():
     }
     numbers = StrRepr(Int(Counter(d.timestamp() for d in data)), pattern='d')
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=Int), pattern='d')
+    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)),
+                                      pattern=(Int, 1, 0)), pattern='d')
     pattern.validate('1000')
     with pytest.raises(ValueError):
         pattern.validate('2000000000')
@@ -862,7 +863,8 @@ def test_datetime_strrepr_numrepr():
 
     numbers = StrRepr(Float(Counter(d.timestamp() for d in data)), pattern='f')
     pattern = DateTime.from_numbers(numbers)
-    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)), pattern=Float), pattern='f')
+    assert pattern == StrRepr(NumRepr(DateTime(Counter(data)),
+                                      pattern=(Float, 1, 0)), pattern='f')
     pattern.validate('1000')
     pattern.validate('1000.0')
     with pytest.raises(ValueError):

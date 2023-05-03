@@ -1182,12 +1182,12 @@ class StrRepr(Repr):
             value = parse_bool(value, false, true)
         elif isinstance(self.content, Int) or (
             isinstance(self.content, NumRepr) and
-            self.content.pattern is Int
+            self.content.pattern[0] is Int
         ):
             value = int(value, base=self.int_bases[self.pattern])
         elif isinstance(self.content, Float) or (
             isinstance(self.content, NumRepr) and
-            self.content.pattern is Float
+            self.content.pattern[0] is Float
         ):
             assert self.pattern == 'f'
             value = float(value)
@@ -1210,13 +1210,14 @@ class NumRepr(Repr):
         type_, scale, offset = self.pattern
         delta = timedelta(seconds=scale)
         unit = ', '.join(
-            '{value}{prop}'.format(
-                value='{value}*' if value != 1 else '',
+            '{count}{prop}'.format(
+                count='{value}*'.format(value=value) if value != 1 else '',
                 prop=prop)
             for prop in ('days', 'seconds', 'microseconds')
             for value in (getattr(delta, prop),)
+            if value
         )
-        if not epoch % 86400:
+        if not offset % 86400:
             epoch = datetime.utcfromtimestamp(offset).date().isoformat()
         else:
             epoch = datetime.utcfromtimestamp(offset).isoformat()

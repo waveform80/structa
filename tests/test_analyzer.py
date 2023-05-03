@@ -401,7 +401,7 @@ def test_analyze_datetime_float():
         sample=[data],
         content=[NumRepr(
             DateTime(Counter(dt.datetime.utcfromtimestamp(n) for n in data)),
-            pattern=float)]
+            pattern=(Float, 1, 0))]
     )
 
 
@@ -415,7 +415,7 @@ def test_analyze_datetime_float_str():
         sample=[data],
         content=[StrRepr(NumRepr(
             DateTime(Counter(dt.datetime.utcfromtimestamp(float(n)) for n in data)),
-            pattern=float), pattern='f')]
+            pattern=(Float, 1, 0)), pattern='f')]
     )
 
 
