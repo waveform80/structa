@@ -5,11 +5,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import os
+import re
 import sys
 import argparse
 import warnings
-from datetime import datetime
 from fractions import Fraction
+from datetime import datetime, timedelta
 
 from blessings import Terminal
 from tqdm import tqdm
@@ -172,9 +173,12 @@ def get_config(args):
         "be specified as an absolute timestamp (in ISO-8601 format) or a "
         "duration to be added to the current timestamp")
     parser.add_argument(
-        '--epoch', type=epoch, metavar='WHEN', default='unix',
-        help="The epoch from which datetimes are measured. Can be specified "
-        "as an absolute timestamp (in ISO-8601 format), or one of the special "
+        '--timestamps', type=timestamps, default='unix',
+        metavar='[UNIT since] EPOCH',
+        help="The units and epoch from which datetimes are measured. Can be "
+        "specified as a string in the form 'duration since timestamp' (for "
+        "example 'days since 1970-01-01' or 'seconds since 1900-01-01'), a "
+        "standalone timestamp (in ISO-8601 format), or one of the special "
         'strings, "unix" or "excel" (default: %(default)s)')
     parser.add_argument(
         '--max-numeric-len', type=int, metavar='LEN', default=30,
@@ -316,6 +320,8 @@ class MyAnalyzer(Analyzer):
             strip_whitespace=config.strip_whitespace,
             min_timestamp=config.min_timestamp,
             max_timestamp=config.max_timestamp,
+            epoch=config.timestamps[1],
+            epoch_unit=config.timestamps[0],
             progress=progress)
 
 
@@ -352,9 +358,9 @@ def max_timestamp(s, now=_start):
     else:
         return now + t
 
-def epoch(s):
+def timestamps(s):
     try:
-        return {
+        unit, epoch = {
             # The Excel epoch is defined as 1900-01-01, but that is date "1"
             # in Excel, rather than "0". Furthermore, for compat. with good
             # ol' 1-2-3, 1900 was treated (incorrectly) as a leap-year leading
@@ -362,11 +368,19 @@ def epoch(s):
             # emulate all that nonsense, we just use 1899-12-30 as the epoch
             # which is good enough for all detection purposes (which is all
             # structa cares about anyway)
-            'excel': datetime(1899, 12, 30),
-            'unix': datetime.utcfromtimestamp(0),
+            'excel': (timedelta(days=1), datetime(1899, 12, 30)),
+            'unix':  (timedelta(seconds=1), datetime.utcfromtimestamp(0)),
         }[s]
     except KeyError:
-        return parse_timestamp(s)
+        fmt_re = re.compile(r'((?P<unit>\D+) since )?(?P<epoch>[^ ]+)')
+        m = fmt_re.match(s)
+        if not m:
+            raise ValueError('invalid timestamp representation {s}'.format(s=s))
+        if m.group('unit') is None:
+            unit = timedelta(seconds=1)
+        else:
+            unit = parse_duration('1' + m.group('unit'), delta_type=timedelta)
+        return unit, parse_timestamp(m.group('epoch'))
 
 def num(s):
     if s.endswith('%'):
