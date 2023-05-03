@@ -20,7 +20,8 @@ Synopsis
             [--hide-pattern] [--show-pattern]
             [--hide-range] [--show-range {hidden,limits,median,quartiles,graph}]
             [--hide-samples] [--show-samples]
-            [--min-timestamp WHEN] [--max-timestamp WHEN] [--epoch WHEN ]
+            [--min-timestamp WHEN] [--max-timestamp WHEN]
+            [--timestamps [UNIT since] EPOCH]
             [--max-numeric-len LEN] [--sample-bytes SIZE]
             [--strip-whitespace] [--no-strip-whitespace]
             [--csv-format FIELD[QUOTE]] [--yaml-safe] [--no-yaml-safe]
@@ -145,13 +146,19 @@ Optional Arguments
     absolute timestamp (in ISO-8601 format) or a duration to be added to the
     current timestamp
 
-.. option:: --epoch WHEN
+.. option:: --timestamps [UNIT since] EPOCH
 
-    The epoch from which datetimes are measured. Can be specified as an
-    absolute timestamp (in ISO-8601 format: YYYY-mm-ddTHH:MM:SS), or one of the
-    special strings, "unix" (which is equivalent to 1970-01-01) or
-    "excel" (which is roughly equivalent to 1900-01-01, with some adjustments).
-    The default is "unix"
+    The units and epoch from which numeric representations of datetimes are
+    measured. Can be specified as a string in the form:
+
+    * 'duration since timestamp' (for example 'days since 1970-01-01' or
+      'seconds since 1900-01-01')
+
+    * a standalone timestamp (in ISO-8601 format)
+
+    * one of the special strings "unix" (equivalent to 'seconds since
+      1970-01-01'; this is also the default) or "excel" (roughly equivalent to
+      'days since 1900-01-01')
 
 .. option:: --max-numeric-len LEN
 
