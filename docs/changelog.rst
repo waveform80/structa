@@ -11,6 +11,17 @@ Changelog
 .. currentmodule:: structa
 
 
+Release 0.4 (2023-05-03)
+========================
+
+* Improved null/None handling (`#20`_)
+* Added ability to handle numeric date-time representations with different
+  epochs and scales (e.g. UNIX timestamps vs Excel timestamps) (`#11`_)
+
+.. _#11: https://github.com/waveform80/structa/issues/11
+.. _#20: https://github.com/waveform80/structa/issues/20
+
+
 Release 0.3 (2021-10-27)
 ========================
 
