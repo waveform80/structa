@@ -7,16 +7,21 @@
 import math
 from copy import copy
 from numbers import Real
+from datetime import datetime
 from textwrap import indent, shorten
-from datetime import datetime, timedelta
 from functools import partial, total_ordering
 from collections.abc import Mapping
 from operator import attrgetter
 
 from .collections import Counter, FrozenCounter
 from .conversions import try_conversion, parse_bool
-from .format import format_int, format_repr, format_sample
 from .xml import ElementFactory, xml, merge_siblings
+from .format import (
+    format_int,
+    format_repr,
+    format_sample,
+    format_timestamp_numrepr,
+)
 
 
 tag = ElementFactory()
@@ -905,14 +910,15 @@ class DateTime(Scalar):
             pattern=pattern)
 
     @classmethod
-    def from_numbers(cls, pattern, epoch=datetime.utcfromtimestamp(0),
-                     unit=timedelta(seconds=1)):
+    def from_numbers(cls, pattern, offset=0, scale=1):
         """
         Class method for constructing an instance wrapped in a :class:`NumRepr`
         to indicate a numeric representation of a set of timestamps (e.g. day
-        offset from the UNIX epoch; a different *epoch* may be specified as
-        a :class:`~datetime.datetime`, and a different *unit* as a
-        :class:`~datetime.timedelta`, which defaults to 1 second).
+        offset from the UNIX epoch). A different epoch may be specified as a
+        numeric *offset*, and a different epoch *scale* as a numeric number of
+        seconds). The default offset and scale are 0 and 1 which is equivalent
+        to a seconds offset from the UNIX epoch (i.e. a traditional UNIX
+        timestamp).
 
         Constructed with an *sample* of number, a *pattern* (which can be a
         :class:`StrRepr` instance if the numbers are themselves represented as
@@ -925,9 +931,6 @@ class DateTime(Scalar):
         else:
             num_pattern = pattern
         dt_counter = Counter()
-        unix_epoch = datetime.utcfromtimestamp(0)
-        offset = (epoch - unix_epoch).total_seconds()
-        scale = unit.total_seconds()
         for value, count in num_pattern.values.sample.items():
             dt_value = datetime.utcfromtimestamp((value * scale) + offset)
             dt_counter[dt_value] = count
@@ -1208,27 +1211,13 @@ class NumRepr(Repr):
 
     def __str__(self):
         type_, scale, offset = self.pattern
-        delta = timedelta(seconds=scale)
-        unit = ', '.join(
-            '{count}{prop}'.format(
-                count='{value}*'.format(value=value) if value != 1 else '',
-                prop=prop)
-            for prop in ('days', 'seconds', 'microseconds')
-            for value in (getattr(delta, prop),)
-            if value
-        )
-        if not offset % 86400:
-            epoch = datetime.utcfromtimestamp(offset).date().isoformat()
-        else:
-            epoch = datetime.utcfromtimestamp(offset).isoformat()
-        if type_ is Int:
-            template = 'int {unit} after {epoch} of {self.content}'
-        elif type_ is Float:
-            template = 'float {unit} after {epoch} of {self.content}'
-        else:
-            assert False, 'str(num-repr) of {self.content!r}'.format(
-                self=self, unit=unit, epoch=epoch)
-        return template.format(self=self, unit=unit, epoch=epoch)
+        try:
+            type_name = {Int: 'int', Float: 'float'}[type_]
+        except KeyError:
+            assert False, 'str(num-repr) of {self.content!r}'.format(self=self)
+        return '{type_name} {numrepr} of {self.content}'.format(
+            self=self, type_name=type_name,
+            numrepr=format_timestamp_numrepr(offset, scale))
 
     def __xml__(self):
         type_, scale, offset = self.pattern
