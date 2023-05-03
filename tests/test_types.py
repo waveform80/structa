@@ -664,14 +664,14 @@ def test_num_repr():
         dt.datetime.utcfromtimestamp(1),
         dt.datetime.utcfromtimestamp(86400),
     ))), pattern=(Int, 1, 0))
-    assert str(pattern) == 'int seconds after 1970-01-01 of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
+    assert str(pattern) == 'int seconds since 1970-01-01 of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
     assert xml(pattern).tag == 'intof'
     pattern = NumRepr(DateTime(Counter((
         dt.datetime.utcfromtimestamp(0.0),
         dt.datetime.utcfromtimestamp(1.0),
         dt.datetime.utcfromtimestamp(86400.0),
     ))), pattern=(Float, 1, 0))
-    assert str(pattern) == 'float seconds after 1970-01-01 of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
+    assert str(pattern) == 'float seconds since 1970-01-01 of datetime range=1970-01-01 00:00:00..1970-01-02 00:00:00'
     assert xml(pattern).tag == 'floatof'
     assert pattern == pattern + pattern
     assert pattern + pattern == pattern

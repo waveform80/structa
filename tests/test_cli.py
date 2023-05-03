@@ -35,10 +35,15 @@ def test_max_timestamp():
     assert cli.max_timestamp('10 years') == cli._start + relativedelta(years=10)
 
 
-def test_epoch():
-    assert cli.epoch('unix') == dt.datetime(1970, 1, 1)
-    assert cli.epoch('excel') == dt.datetime(1899, 12, 30)
-    assert cli.epoch('2015-03-31 00:00:00') == dt.datetime(2015, 3, 31)
+def test_timestamps():
+    assert cli.timestamps('unix') == (
+        dt.timedelta(seconds=1), dt.datetime(1970, 1, 1))
+    assert cli.timestamps('excel') == (
+        dt.timedelta(days=1), dt.datetime(1899, 12, 30))
+    assert cli.timestamps('2015-03-31 00:00:00') == (
+        dt.timedelta(seconds=1), dt.datetime(2015, 3, 31))
+    assert cli.timestamps('milliseconds since 1900-01-01') == (
+        dt.timedelta(milliseconds=1), dt.datetime(1900, 1, 1))
 
 
 def test_num():

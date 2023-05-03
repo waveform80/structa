@@ -18,10 +18,14 @@ from pkg_resources import require
 
 from ..analyzer import Analyzer
 from ..errors import ValidationWarning
-from ..conversions import parse_duration_or_timestamp, parse_timestamp
 from ..types import sources_list, SourcesList
 from ..source import Source
 from ..xml import xml, get_transform
+from ..conversions import (
+    parse_duration,
+    parse_duration_or_timestamp,
+    parse_timestamp,
+)
 
 try:
     import argcomplete
@@ -360,7 +364,7 @@ def max_timestamp(s, now=_start):
 
 def timestamps(s):
     try:
-        unit, epoch = {
+        return {
             # The Excel epoch is defined as 1900-01-01, but that is date "1"
             # in Excel, rather than "0". Furthermore, for compat. with good
             # ol' 1-2-3, 1900 was treated (incorrectly) as a leap-year leading

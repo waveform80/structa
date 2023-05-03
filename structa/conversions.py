@@ -165,7 +165,7 @@ def parse_timestamp(s):
     return parse(s)
 
 
-def parse_duration_or_timestamp(s, duration_type=relativedelta):
+def parse_duration_or_timestamp(s, delta_type=relativedelta):
     """
     Convert the string *s* to a :class:`~datetime.datetime` or a
     :class:`~dateutil.relativedelta.relativedelta` (or
@@ -174,6 +174,6 @@ def parse_duration_or_timestamp(s, duration_type=relativedelta):
     attempted. A :exc:`ValueError` is raised if both conversions fail.
     """
     try:
-        return parse_duration(s, duration_type=duration_type)
+        return parse_duration(s, delta_type=delta_type)
     except ValueError:
         return parse_timestamp(s)
