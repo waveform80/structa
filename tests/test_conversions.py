@@ -43,8 +43,12 @@ def test_parse_duration():
     assert parse_duration('1h') == relativedelta(hours=1)
     assert parse_duration('1hrs, 5mins') == relativedelta(hours=1, minutes=5)
     assert parse_duration('60 seconds') == relativedelta(minutes=1)
+    assert parse_duration('1 week', dt.timedelta) == dt.timedelta(days=7)
+    assert parse_duration('1 week, 2 days', dt.timedelta) == dt.timedelta(days=9)
     with pytest.raises(ValueError):
         parse_duration('foo')
+    with pytest.raises(ValueError):
+        parse_duration('1 month', dt.timedelta)
 
 
 def test_parse_timestamp():
