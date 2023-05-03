@@ -6,7 +6,7 @@
 
 from math import log
 from itertools import tee
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def pairwise(iterable):
@@ -153,3 +153,29 @@ def format_sample(value):
         }[type(value)]()
     except KeyError:
         raise ValueError('invalid type for value {!r}'.format(value))
+
+
+def format_timestamp_numrepr(offset, scale):
+    delta = timedelta(seconds=scale)
+    simple = {
+        timedelta(**{name: 1}): name
+        for name in (
+            'microseconds',
+            'milliseconds',
+            'seconds',
+            'minutes',
+            'hours',
+            'days',
+            'weeks',
+        )
+    }
+    if offset % 86400:
+        epoch = datetime.utcfromtimestamp(offset).isoformat()
+    else:
+        epoch = datetime.utcfromtimestamp(offset).date().isoformat()
+    try:
+        return '{unit} since {epoch}'.format(unit=simple[delta], epoch=epoch)
+    except KeyError:
+        return 'seconds since {epoch} {op} {scale:g}'.format(
+            epoch=epoch, op=('*', '/')[scale >= 1],
+            scale=scale if scale >= 1 else (1 / scale))

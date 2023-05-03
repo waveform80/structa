@@ -15,8 +15,13 @@ from operator import attrgetter
 
 from .collections import Counter, FrozenCounter
 from .conversions import try_conversion, parse_bool
-from .format import format_int, format_repr, format_sample
 from .xml import ElementFactory, xml, merge_siblings
+from .format import (
+    format_int,
+    format_repr,
+    format_sample,
+    format_timestamp_numrepr,
+)
 
 
 tag = ElementFactory()
@@ -905,11 +910,15 @@ class DateTime(Scalar):
             pattern=pattern)
 
     @classmethod
-    def from_numbers(cls, pattern):
+    def from_numbers(cls, pattern, offset=0, scale=1):
         """
         Class method for constructing an instance wrapped in a :class:`NumRepr`
         to indicate a numeric representation of a set of timestamps (e.g. day
-        offset from the UNIX epoch).
+        offset from the UNIX epoch). A different epoch may be specified as a
+        numeric *offset*, and a different epoch *scale* as a numeric number of
+        seconds). The default offset and scale are 0 and 1 which is equivalent
+        to a seconds offset from the UNIX epoch (i.e. a traditional UNIX
+        timestamp).
 
         Constructed with an *sample* of number, a *pattern* (which can be a
         :class:`StrRepr` instance if the numbers are themselves represented as
@@ -923,8 +932,10 @@ class DateTime(Scalar):
             num_pattern = pattern
         dt_counter = Counter()
         for value, count in num_pattern.values.sample.items():
-            dt_counter[datetime.fromtimestamp(value)] = count
-        result = NumRepr(cls(dt_counter), pattern=num_pattern.__class__)
+            dt_value = datetime.utcfromtimestamp((value * scale) + offset)
+            dt_counter[dt_value] = count
+        result = NumRepr(cls(dt_counter), pattern=(
+            num_pattern.__class__, scale, offset))
         if isinstance(pattern, StrRepr):
             return pattern.with_content(result)
         else:
@@ -1174,12 +1185,12 @@ class StrRepr(Repr):
             value = parse_bool(value, false, true)
         elif isinstance(self.content, Int) or (
             isinstance(self.content, NumRepr) and
-            self.content.pattern is Int
+            self.content.pattern[0] is Int
         ):
             value = int(value, base=self.int_bases[self.pattern])
         elif isinstance(self.content, Float) or (
             isinstance(self.content, NumRepr) and
-            self.content.pattern is Float
+            self.content.pattern[0] is Float
         ):
             assert self.pattern == 'f'
             value = float(value)
@@ -1199,36 +1210,52 @@ class NumRepr(Repr):
     __slots__ = ()
 
     def __str__(self):
-        if self.pattern is Int:
-            template = 'int of {self.content}'
-        elif self.pattern is Float:
-            template = 'float of {self.content}'
-        else:
+        type_, scale, offset = self.pattern
+        try:
+            type_name = {Int: 'int', Float: 'float'}[type_]
+        except KeyError:
             assert False, 'str(num-repr) of {self.content!r}'.format(self=self)
-        return template.format(self=self)
+        return '{type_name} {numrepr} of {self.content}'.format(
+            self=self, type_name=type_name,
+            numrepr=format_timestamp_numrepr(offset, scale))
 
     def __xml__(self):
-        if self.pattern is Int:
-            return tag.intof(xml(self.content))
-        elif self.pattern is Float:
-            return tag.floatof(xml(self.content))
+        type_, scale, offset = self.pattern
+        if type_ is Int:
+            return tag.intof(xml(self.content), scale=scale, offset=offset)
+        elif type_ is Float:
+            return tag.floatof(xml(self.content), scale=scale, offset=offset)
         else:
             assert False, 'xml(num-repr) of {self.content!r}'.format(self=self)
 
     def __add__(self, other):
         if self == other:
-            if self.pattern is Float or other.pattern is Float:
-                pattern = Float
+            self_type, self_scale, self_offset = self.pattern
+            other_type, other_scale, other_offset = other.pattern
+            if self_type is Float or other_type is Float:
+                add_type = Float
             else:
-                pattern = Int
-            return NumRepr(self.content + other.content, pattern)
+                add_type = Int
+            return NumRepr(
+                self.content + other.content,
+                (add_type, self_scale, self_offset))
         return NotImplemented
+
+    def __eq__(self, other):
+        if not isinstance(other, NumRepr):
+            return NotImplemented
+        if super().__eq__(other) is not True:
+            return False
+        self_type, self_scale, self_offset = self.pattern
+        other_type, other_scale, other_offset = other.pattern
+        return (self_scale == other_scale) and (self_offset == other_offset)
 
     def validate(self, value):
         if not isinstance(value, Real):
             raise TypeError('{value!r} is not a number'.format(value=value))
         if isinstance(self.content, DateTime):
-            value = datetime.fromtimestamp(value)
+            type_, scale, offset = self.pattern
+            value = datetime.utcfromtimestamp((value * scale) + offset)
         else:
             assert False, (
                 'validating num-repr of {self.content!r}'.format(self=self))

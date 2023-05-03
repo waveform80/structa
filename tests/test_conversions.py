@@ -43,9 +43,19 @@ def test_parse_duration():
     assert parse_duration('1h') == relativedelta(hours=1)
     assert parse_duration('1hrs, 5mins') == relativedelta(hours=1, minutes=5)
     assert parse_duration('60 seconds') == relativedelta(minutes=1)
-    assert parse_duration('1s-50ms') == relativedelta(seconds=1, microseconds=-50000)
+    assert parse_duration('1 week', dt.timedelta) == dt.timedelta(days=7)
+    assert parse_duration('1 week, 2 days', dt.timedelta) == dt.timedelta(days=9)
     with pytest.raises(ValueError):
         parse_duration('foo')
+    with pytest.raises(ValueError):
+        parse_duration('1 month', dt.timedelta)
+
+
+def test_parse_timestamp():
+    assert parse_timestamp('1970-01-01T00:00:00') == dt.datetime(1970, 1, 1, 0, 0, 0)
+    assert parse_timestamp('2000-01-01 00:00:00') == dt.datetime(2000, 1, 1, 0, 0, 0)
+    with pytest.raises(ValueError):
+        parse_timestamp('foo')
 
 
 def test_parse_duration_or_timestamp():
@@ -54,4 +64,5 @@ def test_parse_duration_or_timestamp():
     assert parse_duration_or_timestamp('-1yr') == relativedelta(years=-1)
     assert parse_duration_or_timestamp('01:30:00') == dt.datetime.today().replace(
         hour=1, minute=30, second=0, microsecond=0)
+    assert parse_duration_or_timestamp('1970-01-01T00:00:00') == dt.datetime(1970, 1, 1, 0, 0, 0)
     assert parse_duration_or_timestamp('2000-01-01 00:00:00') == dt.datetime(2000, 1, 1, 0, 0, 0)

@@ -4,7 +4,9 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+import io
 import os
+import sys
 import json
 import random
 import datetime as dt
@@ -35,6 +37,21 @@ def test_max_timestamp():
     assert cli.max_timestamp('10 years') == cli._start + relativedelta(years=10)
 
 
+def test_timestamps():
+    assert cli.timestamps('unix') == (
+        dt.timedelta(seconds=1), dt.datetime(1970, 1, 1))
+    assert cli.timestamps('excel') == (
+        dt.timedelta(days=1), dt.datetime(1899, 12, 30))
+    assert cli.timestamps('2015-03-31 00:00:00') == (
+        dt.timedelta(seconds=1), dt.datetime(2015, 3, 31))
+    assert cli.timestamps('milliseconds since 1900-01-01') == (
+        dt.timedelta(milliseconds=1), dt.datetime(1900, 1, 1))
+    with pytest.raises(ValueError):
+        cli.timestamps('')
+    with pytest.raises(ValueError):
+        cli.timestamps('years since 1970-01-01')
+
+
 def test_num():
     assert cli.num('1') == 1
     assert cli.num('1/2') == Fraction(1, 2)
@@ -56,12 +73,31 @@ def test_size():
     assert cli.size('1M') == 1048576
 
 
+def test_file(tmpdir):
+    assert cli.file('-') is sys.stdin.buffer
+    data = list(range(100))
+    filename = str(tmpdir.join('foo.json'))
+    with open(filename, 'w') as f:
+        json.dump(data, f)
+    with cli.file(filename) as f:
+        assert isinstance(f, io.IOBase)
+
+
 def test_main(tmpdir, capsys):
     data = list(range(100))
     filename = str(tmpdir.join('foo.json'))
     with open(filename, 'w') as f:
         json.dump(data, f)
     assert cli.main([filename]) == 0
+    assert capsys.readouterr().out.strip() == '[ int range=0..99 ]'
+
+
+def test_main_manual_encoding(tmpdir, capsys):
+    data = list(range(100))
+    filename = str(tmpdir.join('foo.json'))
+    with open(filename, 'w', encoding='ascii') as f:
+        json.dump(data, f)
+    assert cli.main([filename, '--encoding', 'ascii']) == 0
     assert capsys.readouterr().out.strip() == '[ int range=0..99 ]'
 
 

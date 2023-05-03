@@ -433,8 +433,9 @@ Date Handling
 The other important switches are those used in the detection of dates encoded
 as numbers: :option:`structa --min-timestamp` and :option:`structa
 --max-timestamp`. When dates are encoded as (potentially fractional)
-day-offsets from the UNIX epoch (the 1st January, 1970), how does structa
-determine that it's looking at a set of dates rather than a set of numbers?
+day-offsets from some :option:`structa --epoch` (which defaults to the UNIX
+epoch, i.e. the 1st January, 1970), how does structa determine that it's
+looking at a set of dates rather than a set of numbers?
 
 In a typical set of (arbitrary) numbers, it's quite normal to find "0" or "1"
 commonly represented, or for the set of numbers to span over a large range
