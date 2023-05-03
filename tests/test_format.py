@@ -61,3 +61,11 @@ def test_format_sample():
     assert format_sample(dt.datetime(2000, 1, 1)) == '2000-01-01 00:00:00'
     with pytest.raises(ValueError):
         format_sample([])
+
+
+def test_format_timestamp_numrepr():
+    assert format_timestamp_numrepr(0, 1) == 'seconds since 1970-01-01'
+    assert format_timestamp_numrepr(86400, 86400) == 'days since 1970-01-02'
+    assert format_timestamp_numrepr(60, 1) == 'seconds since 1970-01-01T00:01:00'
+    assert format_timestamp_numrepr(0, 2) == 'seconds since 1970-01-01 / 2'
+    assert format_timestamp_numrepr(0, 0.5) == 'seconds since 1970-01-01 * 2'

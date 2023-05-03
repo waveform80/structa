@@ -176,6 +176,6 @@ def format_timestamp_numrepr(offset, scale):
     try:
         return '{unit} since {epoch}'.format(unit=simple[delta], epoch=epoch)
     except KeyError:
-        return 'seconds since {epoch} {op} {scale}'.format(
+        return 'seconds since {epoch} {op} {scale:g}'.format(
             epoch=epoch, op=('*', '/')[scale >= 1],
             scale=scale if scale >= 1 else (1 / scale))
