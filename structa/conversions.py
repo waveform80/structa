@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import re
+from datetime import timedelta
 
 from dateutil.parser import parse
 from dateutil.relativedelta import relativedelta
@@ -84,11 +85,13 @@ _SPANS = {
 }
 
 
-def parse_duration(s):
+def parse_duration(s, delta_type=relativedelta):
     """
-    Convert the string *s* to a :class:`~dateutil.relativedelta.relativedelta`.
-    The string must consist of white-space and/or comma separated values which
-    are a number followed by a suffix indicating duration. For example:
+    Convert the string *s* to a :class:`~dateutil.relativedelta.relativedelta`
+    (by default) or a :class:`~datetime.timedelta` if requested by
+    *delta_type*. The string must consist of white-space and/or comma separated
+    values which are a number followed by a suffix indicating duration. For
+    example:
 
         >>> parse_duration('1s')
         relativedelta(seconds=+1)
@@ -96,6 +99,8 @@ def parse_duration(s):
         relativedelta(minutes=+5, seconds=+30)
         >>> parse_duration('1 year')
         relativedelta(years=+1)
+        >>> parse_duration('1 week, 1 day', delta_type=datetime.timedelta)
+        timedelta(days=8)
 
     Note that some suffixes like "m" can be ambiguous; using common
     abbreviations should avoid ambiguity:
@@ -112,6 +117,9 @@ def parse_duration(s):
     * *Microseconds*: microseconds, microsecond, microsec, micros, micro,
       useconds, usecond, usecs, usec, us, µseconds, µsecond, µsecs, µsec, µs
 
+    * *Milliseconds*: milliseconds, millisecond, millisec, millis, milli,
+      mseconds, msecond, msecs, msec, ms
+
     * *Seconds*: seconds, second, secs, sec, s
 
     * *Minutes*: minutes, minute, mins, min, mi
@@ -122,25 +130,31 @@ def parse_duration(s):
 
     * *Weeks*: weeks, week, wks, wk, w
 
-    * *Months*: months, month, mons, mon, mths, mth, m
+    * *Months*: months, month, mons, mon, mths, mth, m (relativedelta only)
 
-    * *Years*: years, year, yrs, yr, y
+    * *Years*: years, year, yrs, yr, y (relativedelta only)
 
     If conversion fails, :exc:`ValueError` is raised.
     """
-    spans = {span: 0 for span in _SPANS}
+    assert delta_type in (relativedelta, timedelta)
+    spans = {}
     t = s
     for span, regex in _SPANS.items():
+        if delta_type is timedelta and span in ('months', 'years'):
+            continue
         m = regex.search(t)
         if m:
-            spans[span] += int(m.group('num'))
+            spans[span] = spans.get(span, 0) + int(m.group('num'))
             t = (t[:m.start(0)] + t[m.end(0):]).strip(' \t\n,')
             if not t:
                 break
     if t:
         raise ValueError('invalid duration {}'.format(s))
-    spans['microseconds'] += spans.pop('milliseconds') * 1000
-    return relativedelta(**spans)
+    if delta_type is relativedelta:
+        spans['microseconds'] = (
+            spans.get('microseconds', 0) +
+            (spans.pop('milliseconds', 0) * 1000))
+    return delta_type(**spans)
 
 
 def parse_timestamp(s):
@@ -151,14 +165,15 @@ def parse_timestamp(s):
     return parse(s)
 
 
-def parse_duration_or_timestamp(s):
+def parse_duration_or_timestamp(s, duration_type=relativedelta):
     """
     Convert the string *s* to a :class:`~datetime.datetime` or a
-    :class:`~dateutil.relativedelta.relativedelta`. Duration conversion is
-    attempted to and, if this fails, date-time conversion is attempted. A
-    :exc:`ValueError` is raised if both conversions fail.
+    :class:`~dateutil.relativedelta.relativedelta` (or
+    :class:`~datetime.timedelta` if *duration_type* so specifies). Duration
+    conversion is attempted to and, if this fails, date-time conversion is
+    attempted. A :exc:`ValueError` is raised if both conversions fail.
     """
     try:
-        return parse_duration(s)
+        return parse_duration(s, duration_type=duration_type)
     except ValueError:
         return parse_timestamp(s)
