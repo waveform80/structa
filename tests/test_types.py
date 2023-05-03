@@ -830,10 +830,9 @@ def test_datetime_numrepr_epoch():
         dt.datetime(1976, 1, 1),
     }
     numbers = Int(Counter((d.timestamp() - offset) // scale for d in data))
-    pattern = DateTime.from_numbers(numbers, epoch=excel_epoch,
-                                    unit=dt.timedelta(days=1))
+    pattern = DateTime.from_numbers(numbers, offset, scale)
     assert pattern == NumRepr(DateTime(Counter(data)),
-                              pattern=(Int, 86400, offset))
+                              pattern=(Int, scale, offset))
     pattern.validate(20000)
     with pytest.raises(TypeError):
         pattern.validate('20000')
