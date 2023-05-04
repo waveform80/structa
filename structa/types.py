@@ -5,9 +5,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 import math
+import datetime as dt
 from copy import copy
 from numbers import Real
-from datetime import datetime
 from textwrap import indent, shorten
 from functools import partial, total_ordering
 from collections.abc import Mapping
@@ -904,7 +904,7 @@ class DateTime(Scalar):
         compatible with :meth:`datetime.datetime.strptime`), and a
         *bad_threshold* of values which are permitted to fail conversion.
         """
-        conv = lambda s: datetime.strptime(s, pattern)
+        conv = lambda s: dt.datetime.strptime(s, pattern)
         return StrRepr(
             cls(try_conversion(iterable, conv, bad_threshold)),
             pattern=pattern)
@@ -932,7 +932,8 @@ class DateTime(Scalar):
             num_pattern = pattern
         dt_counter = Counter()
         for value, count in num_pattern.values.sample.items():
-            dt_value = datetime.utcfromtimestamp((value * scale) + offset)
+            dt_value = dt.datetime.fromtimestamp(
+                (value * scale) + offset, tz=dt.timezone.utc)
             dt_counter[dt_value] = count
         result = NumRepr(cls(dt_counter), pattern=(
             num_pattern.__class__, scale, offset))
@@ -942,9 +943,8 @@ class DateTime(Scalar):
             return result
 
     def __str__(self):
-        return 'datetime range={min}..{max}'.format(
-            min=self.values.min.replace(microsecond=0),
-            max=self.values.max.replace(microsecond=0))
+        return 'datetime range={min:%Y-%m-%d %H:%M:%S}..{max:%Y-%m-%d %H:%M:%S}'.format(
+            min=self.values.min, max=self.values.max)
 
     def __xml__(self):
         return tag.datetime(iter(super().__xml__()))
@@ -957,7 +957,7 @@ class DateTime(Scalar):
         :raises TypeError: if *value* is not a :class:`datetime.datetime`
         :raises ValueError: if *value* is outside the range of sampled values
         """
-        if not isinstance(value, datetime):
+        if not isinstance(value, dt.datetime):
             raise TypeError('{value!r} is not a datetime'.format(value=value))
         if not self.values.min <= value <= self.values.max:
             raise ValueError(
@@ -1195,7 +1195,7 @@ class StrRepr(Repr):
             assert self.pattern == 'f'
             value = float(value)
         elif isinstance(self.content, DateTime):
-            value = datetime.strptime(value, self.pattern)
+            value = dt.datetime.strptime(value, self.pattern)
         else:
             assert False, (
                 'validating str-repr of {self.content!r}'.format(self=self))
@@ -1255,7 +1255,8 @@ class NumRepr(Repr):
             raise TypeError('{value!r} is not a number'.format(value=value))
         if isinstance(self.content, DateTime):
             type_, scale, offset = self.pattern
-            value = datetime.utcfromtimestamp((value * scale) + offset)
+            value = dt.datetime.fromtimestamp(
+                (value * scale) + offset, tz=dt.timezone.utc)
         else:
             assert False, (
                 'validating num-repr of {self.content!r}'.format(self=self))
