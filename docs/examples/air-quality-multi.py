@@ -83,8 +83,8 @@ timestamps = [
 
 data = {
     location: {
-        'euid': 'GB{:04d}A'.format(random.randint(200, 2000)),
-        'ukid': 'UKA{:05d}'.format(random.randint(100, 800)),
+        'euid': f'GB{random.randint(200, 2000):04d}A',
+        'ukid': f'UKA{random.randint(100, 800):05d}',
         'lat': random.random() + 53.0,
         'long': random.random() - 3.0,
         'alt': random.randint(5, 100),
@@ -101,6 +101,6 @@ data = {
 
 for location in data:
     filename = location.lower().replace(' ', '-').replace('.', '')
-    filename = 'air-quality-{filename}.json'.format(filename=filename)
+    filename = f'air-quality-{filename}.json'
     with open(filename, 'w') as out:
         json.dump({location: data[location]}, out)

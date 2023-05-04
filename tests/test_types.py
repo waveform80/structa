@@ -292,12 +292,12 @@ def test_dict_merge_scalar_fields():
             Str(Counter(str(i) for i in range(1, 5)), pattern='d')),
     ])
     data = [
-        {'foo': 'a', 'label': 'foo', 'num{}'.format(i): str(i)}
+        {'foo': 'a', 'label': 'foo', f'num{i}': str(i)}
         for i in range(50)
     ]
     pattern_b = Dict(data, content=[
         DictField(
-            Str(Counter({'foo', 'label'} | set('num{}'.format(i) for i in range(50)))),
+            Str(Counter({'foo', 'label'} | set(f'num{i}' for i in range(50)))),
             Str(Counter(str(i) for i in range(50)), pattern=None)),
     ])
     assert pattern_a == pattern_b

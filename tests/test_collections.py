@@ -32,7 +32,7 @@ def test_frozencounter_hashable():
 def test_frozencounter_repr():
     c = Counter((1, 2, 3) * 100 + (4, 5) * 50)
     f = FrozenCounter(c)
-    assert repr(f) == 'FrozenCounter({c!r})'.format(c=c)
+    assert repr(f) == f'FrozenCounter({c!r})'
 
 
 def test_frozencounter_comparisons():

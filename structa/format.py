@@ -57,8 +57,7 @@ def format_chars(chars, range_sep='-', list_sep=''):
         else:
             ranges.append((j, j))
         return list_sep.join(
-            ('{start}{sep}{finish}' if finish > start else '{start}').format(
-                start=start, finish=finish, sep=range_sep)
+            f'{start}{range_sep}{finish}' if finish > start else f'{start}'
             for start, finish in ranges
         )
 
@@ -87,9 +86,7 @@ def format_int(i):
     if not index:
         return str(i)
     else:
-        return '{value:.1f}{suffix}'.format(
-            value=(i / 1000 ** index),
-            suffix=suffixes[index])
+        return f'{i / 1000 ** index:.1f}{suffixes[index]}'
 
 
 def format_repr(self, **override):
@@ -107,13 +104,13 @@ def format_repr(self, **override):
         for cls in self.__class__.mro() if cls is not object
         for arg in cls.__slots__
     )
-    return '{self.__class__.__name__}({args})'.format(
-        self=self, args=', '.join(
-            '{arg}={value}'.format(
-                arg=arg, value=override.get(arg, repr(getattr(self, arg))))
-            for arg in args
-            if arg not in override
-            or override[arg] is not None))
+    args_str = ', '.join(
+        f'{arg}={override.get(arg, repr(getattr(self, arg)))}'
+        for arg in args
+        if arg not in override
+        or override[arg] is not None
+    )
+    return f'{self.__class__.__name__}({args_str})'
 
 
 def format_sample(value):
@@ -144,15 +141,15 @@ def format_sample(value):
     """
     try:
         return {
-            datetime:   lambda: '{0:%Y-%m-%d %H:%M:%S}'.format(value),
-            float:      lambda: '{0:.7g}'.format(value),
+            datetime:   lambda: f'{value:%Y-%m-%d %H:%M:%S}',
+            float:      lambda: f'{value:.7g}',
             int:        lambda: format_int(value),
             bool:       lambda: ('false', 'true')[value],
             str:        lambda: '"{}"'.format(value.replace('"', '""')),
             type(None): lambda: 'null',
         }[type(value)]()
     except KeyError:
-        raise ValueError('invalid type for value {!r}'.format(value))
+        raise ValueError(f'invalid type for value {value!r}')
 
 
 def format_timestamp_numrepr(offset, scale):
@@ -174,8 +171,8 @@ def format_timestamp_numrepr(offset, scale):
     else:
         epoch = datetime.utcfromtimestamp(offset).date().isoformat()
     try:
-        return '{unit} since {epoch}'.format(unit=simple[delta], epoch=epoch)
+        return f'{simple[delta]} since {epoch}'
     except KeyError:
-        return 'seconds since {epoch} {op} {scale:g}'.format(
-            epoch=epoch, op=('*', '/')[scale >= 1],
-            scale=scale if scale >= 1 else (1 / scale))
+        return (
+            f'seconds since {epoch} {("*", "/")[scale >= 1]} '
+            f'{scale if scale >= 1 else 1 / scale:g}')

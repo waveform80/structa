@@ -314,7 +314,7 @@ def test_analyze_int_bases():
 
 
 def test_analyze_fixed_oct_str():
-    data = ['mode {:03o}'.format(n) for n in range(256)] * 10
+    data = [f'mode {n:03o}' for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
         content=[Str(Counter(data), pattern=[
@@ -325,7 +325,7 @@ def test_analyze_fixed_oct_str():
 
 
 def test_analyze_fixed_dec_str():
-    data = ['num {:03d}'.format(n) for n in range(256)] * 10
+    data = [f'num {n:03d}' for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
         content=[Str(Counter(data), pattern=[
@@ -336,7 +336,7 @@ def test_analyze_fixed_dec_str():
 
 
 def test_analyze_fixed_hex_str():
-    data = ['hex {:02x}'.format(n) for n in range(256)] * 10
+    data = [f'hex {n:02x}' for n in range(256)] * 10
     assert Analyzer(bad_threshold=0).analyze(data) == List(
         sample=[data],
         content=[Str(Counter(data), pattern=[
@@ -727,7 +727,7 @@ def test_analyze_merge_dict():
 
 def test_analyze_merge_redo():
     data = {
-        'id{i}'.format(i=i): {
+        f'id{i}': {
             'count': i,
             'values': {
                 chr(ord('a') + j): random.randint(1000, 2000)

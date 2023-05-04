@@ -66,11 +66,11 @@ def parse_bool(s, false='0', true='1'):
             true:  True,
         }[s.strip().lower()]
     except KeyError:
-        raise ValueError('not a valid bool {!r}'.format(s))
+        raise ValueError(f'not a valid bool {s!r}')
 
 
 _SPANS = {
-    span: re.compile(r'(?:(?P<num>[+-]?\d+)\s*{}\b)'.format(suffix))
+    span: re.compile(fr'(?:(?P<num>[+-]?\d+)\s*{suffix}\b)')
     for span, suffix in [
         ('microseconds', '(micro|u|µ)s(ec(ond)?s?)?'),
         ('milliseconds', '(milli|m)s(ec(ond)?s?)?'),
@@ -149,7 +149,7 @@ def parse_duration(s, delta_type=relativedelta):
             if not t:
                 break
     if t:
-        raise ValueError('invalid duration {}'.format(s))
+        raise ValueError(f'invalid duration {s}')
     if delta_type is relativedelta:
         spans['microseconds'] = (
             spans.get('microseconds', 0) +

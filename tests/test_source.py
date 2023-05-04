@@ -182,7 +182,7 @@ def test_source_detect_csv(tmpdir, table):
     with open(filename, 'w', encoding='utf-8') as f:
         f.write('\r\n'.join(
             ','.join(
-                '"{value}"'.format(value=value.replace('"', '""'))
+                '"{}"'.format(value.replace('"', '""'))
                 for value in row
             )
             for row in table

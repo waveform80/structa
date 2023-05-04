@@ -517,8 +517,8 @@ class Analyzer:
                         head.validate(key)
                     except (TypeError, ValueError) as exc:
                         warnings.warn(ValidationWarning(
-                            "failed to validate {key} against {head!r}: {exc!r}"
-                            .format(key=key, head=head, exc=exc)))
+                            f"failed to validate {key} against {head!r}: "
+                            f"{exc!r}"))
                     else:
                         yield from self._extract(value, tail)
         else:

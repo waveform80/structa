@@ -65,7 +65,7 @@ class FrozenCounter(Mapping):
         return self._counter[key]
 
     def __repr__(self):
-        return "{self.__class__.__name__}({self._counter})".format(self=self)
+        return f"{self.__class__.__name__}({self._counter})"
 
     def __hash__(self):
         if self._hash is None:

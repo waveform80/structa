@@ -22,7 +22,7 @@ metadata = config['metadata']
 
 project = metadata['name'].title()
 author = metadata['author']
-copyright = '2018-{now:%Y} {author}'.format(now=datetime.now(), author=author)
+copyright = f'2018-{datetime.now():%Y} {author}'
 release = metadata['version']
 version = release
 
@@ -72,8 +72,7 @@ intersphinx_mapping = {
 
 html_theme = 'sphinx_rtd_theme'
 pygments_style = 'default'
-html_title = '{project} {version} Documentation'.format(
-    project=project, version=version)
+html_title = f'{project} {version} Documentation'
 html_static_path = ['_static']
 html_extra_path = ['_html']
 manpages_url = 'https://manpages.ubuntu.com/manpages/focal/en/man{section}/{page}.{section}.html'
@@ -111,7 +110,7 @@ latex_show_urls = 'footnote'
 
 epub_basename = project
 epub_author = author
-epub_identifier = 'https://{metadata[name]}.readthedocs.io/'.format(metadata=metadata)
+epub_identifier = f'https://{metadata["name"]}.readthedocs.io/'
 epub_show_urls = 'no'
 
 # -- Options for manual page output ------------------------------------------
@@ -120,7 +119,7 @@ man_pages = [
     (
         'manual',
         metadata['name'],
-        '{project} Utility'.format(project=project),
+        f'{project} Utility',
         [metadata['author']],
         1
     ),

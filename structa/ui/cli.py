@@ -239,15 +239,12 @@ def get_structure(config):
     with tqdm(config.file, leave=False, bar_format=bar_format, maxinterval=1) as progress:
         data = sources_list()
         for file in progress:
-            progress.set_description(
-                'Reading file {file.name}'.format(file=file))
+            progress.set_description(f'Reading file {file.name}')
             source = MySource.from_config(config, file)
             if config.encoding == 'auto':
-                progress.set_description(
-                    'Guessed encoding {source.encoding}'.format(source=source))
+                progress.set_description(f'Guessed encoding {source.encoding}')
             if config.format == 'auto':
-                progress.set_description(
-                    'Guessed format {source.format}'.format(source=source))
+                progress.set_description(f'Guessed format {source.format}')
             progress.set_description('Parsing data')
             data.append(source.data)
     with tqdm(leave=False, bar_format=bar_format, smoothing=0, maxinterval=1) as progress:
@@ -259,8 +256,7 @@ def get_structure(config):
         n = 0
         while True:
             n += 1
-            progress.set_description(
-                'Merging common structures (pass {})'.format(n))
+            progress.set_description(f'Merging common structures (pass {n})')
             result = analyzer.merge(struct)
             if result.size == struct.size:
                 break
@@ -379,7 +375,7 @@ def timestamps(s):
         fmt_re = re.compile(r'((?P<unit>\D+) since )?(?P<epoch>[^ ]+)')
         m = fmt_re.match(s)
         if not m:
-            raise ValueError('invalid timestamp representation {s}'.format(s=s))
+            raise ValueError(f'invalid timestamp representation {s}')
         if m.group('unit') is None:
             unit = timedelta(seconds=1)
         else:

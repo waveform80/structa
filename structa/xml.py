@@ -149,9 +149,9 @@ class ElementFactory:
         and with attributes *attrs*.
         """
         if self._namespace:
-            _name = '{{{self._namespace}}}{_name}'.format(self=self, _name=_name)
+            _name = f'{{{self._namespace}}}{_name}'
             attrs = {
-                '{{{self._namespace}}}{key}'.format(self=self, key=key): value
+                f'{{{self._namespace}}}{key}': value
                 for (key, value) in attrs.items()
             }
         e = et.Element(_name, {

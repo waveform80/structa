@@ -418,9 +418,9 @@ class Dict(Container):
             result = ', '.join(fields)
             if '\n' in result or len(result) > 60:
                 result = ',\n'.join(fields)
-                return '{{\n{result}\n}}'.format(result=indent(result, '    '))
+                return f'{{\n{indent(result, "    ")}\n}}'
             else:
-                return '{{{result}}}'.format(result=result)
+                return f'{{{result}}}'
 
     def __xml__(self):
         return tag.dict(iter(super().__xml__()))
@@ -475,7 +475,7 @@ class Dict(Container):
         :raises TypeError: if *value* is not a :class:`dict`
         """
         if not isinstance(value, dict):
-            raise TypeError('{value!r} is not a dictionary'.format(value=value))
+            raise TypeError(f'{value!r} is not a dictionary')
         # XXX Also needs refining for keys present/subordinate structures
 
 
@@ -505,7 +505,7 @@ class DictField(Type):
         self.value = value
 
     def __str__(self):
-        return '{self.key}: {self.value}'.format(self=self)
+        return f'{self.key}: {self.value}'
 
     def __xml__(self):
         return tag.field(xml(self.key), xml(self.value))
@@ -552,9 +552,9 @@ class Tuple(Container):
             result = ', '.join(fields)
             if '\n' in result or len(result) > 60:
                 result = ',\n'.join(fields)
-                return '(\n{result}\n)'.format(result=indent(result, '    '))
+                return f'(\n{indent(result, "    ")}\n)'
             else:
-                return '({result})'.format(result=result)
+                return f'({result})'
 
     def __xml__(self):
         return tag.tuple(iter(super().__xml__()))
@@ -572,12 +572,11 @@ class Tuple(Container):
                             sampled values
         """
         if not isinstance(value, tuple):
-            raise TypeError('{value!r} is not a tuple'.format(value=value))
+            raise TypeError(f'{value!r} is not a tuple')
         if not self.lengths.min <= len(value) <= self.lengths.max:
             raise ValueError(
-                '{value!r} is not between {self.lengths.min} and '
-                '{self.lengths.max} elements in length'.format(
-                    value=value, self=self))
+                f'{value!r} is not between {self.lengths.min} and '
+                f'{self.lengths.max} elements in length')
 
 
 class TupleField(Type):
@@ -647,9 +646,9 @@ class List(Container):
             result = ', '.join(elems)
             if '\n' in result or len(result) > 60:
                 result = ',\n'.join(elems)
-                return '[\n{result}\n]'.format(result=indent(result, '    '))
+                return f'[\n{indent(result, "    ")}\n]'
             else:
-                return '[{result}]'.format(result=result)
+                return f'[{result}]'
 
     def __xml__(self):
         return tag.list(iter(super().__xml__()))
@@ -669,7 +668,7 @@ class List(Container):
         :raises TypeError: if *value* is not a :class:`list`
         """
         if not isinstance(value, list):
-            raise TypeError('{value!r} is not a list'.format(value=value))
+            raise TypeError(f'{value!r} is not a list')
 
 
 class sources_list(list):
@@ -750,8 +749,7 @@ class Float(Scalar):
             pattern=pattern)
 
     def __str__(self):
-        return 'float range={min:.7g}..{max:.7g}'.format(
-            min=self.values.min, max=self.values.max)
+        return f'float range={self.values.min:.7g}..{self.values.max:.7g}'
 
     def __xml__(self):
         return tag.float(iter(super().__xml__()))
@@ -765,11 +763,11 @@ class Float(Scalar):
         :raises ValueError: if *value* is outside the range of sampled values
         """
         if not isinstance(value, float):
-            raise TypeError('{value!r} is not a float'.format(value=value))
+            raise TypeError(f'{value!r} is not a float')
         if not self.values.min <= value <= self.values.max:
             raise ValueError(
-                '{value!r} is not between {self.values.min!r} and '
-                '{self.values.max!r}'.format(self=self, value=value))
+                f'{value!r} is not between {self.values.min!r} and '
+                f'{self.values.max!r}')
 
 
 class Int(Float):
@@ -803,10 +801,9 @@ class Int(Float):
             pattern=pattern)
 
     def __str__(self):
-        return 'int range={min}..{max}'.format(
-            min=format_int(self.values.min),
-            max=format_int(self.values.max)
-        )
+        return (
+            f'int range={format_int(self.values.min)}..'
+            f'{format_int(self.values.max)}')
 
     def __xml__(self):
         return tag.int(iter(super().__xml__()))
@@ -820,11 +817,11 @@ class Int(Float):
         :raises ValueError: if *value* is outside the range of sampled values
         """
         if not isinstance(value, int):
-            raise TypeError('{value!r} is not an int'.format(value=value))
+            raise TypeError(f'{value!r} is not an int')
         if not self.values.min <= value <= self.values.max:
             raise ValueError(
-                '{value!r} is not between {self.values.min!r} and '
-                '{self.values.max!r}'.format(self=self, value=value))
+                f'{value!r} is not between {self.values.min!r} and '
+                f'{self.values.max!r}')
 
 
 class Bool(Int):
@@ -855,7 +852,7 @@ class Bool(Int):
                     iterable, partial(parse_bool, false=false, true=true),
                     bad_threshold)
             ),
-            pattern='{false}|{true}'.format(false=false, true=true)
+            pattern=f'{false}|{true}'
         )
 
     def __str__(self):
@@ -877,10 +874,9 @@ class Bool(Int):
             pass
         elif isinstance(value, int):
             if not value in (0, 1):
-                raise ValueError('{value!r} is not 0 or 1'.format(value=value))
+                raise ValueError(f'{value!r} is not 0 or 1')
         else:
-            raise TypeError(
-                '{value!r} is not a bool or int'.format(value=value))
+            raise TypeError(f'{value!r} is not a bool or int')
 
 
 class DateTime(Scalar):
@@ -943,8 +939,9 @@ class DateTime(Scalar):
             return result
 
     def __str__(self):
-        return 'datetime range={min:%Y-%m-%d %H:%M:%S}..{max:%Y-%m-%d %H:%M:%S}'.format(
-            min=self.values.min, max=self.values.max)
+        return (
+            f'datetime range={self.values.min:%Y-%m-%d %H:%M:%S}..'
+            f'{self.values.max:%Y-%m-%d %H:%M:%S}')
 
     def __xml__(self):
         return tag.datetime(iter(super().__xml__()))
@@ -958,13 +955,12 @@ class DateTime(Scalar):
         :raises ValueError: if *value* is outside the range of sampled values
         """
         if not isinstance(value, dt.datetime):
-            raise TypeError('{value!r} is not a datetime'.format(value=value))
+            raise TypeError(f'{value!r} is not a datetime')
         if not self.values.min <= value <= self.values.max:
             raise ValueError(
-                '{value:%Y-%m-%d %H:%M:%S} is not between '
-                '{self.values.min:%Y-%m-%d %H:%M:%S} and '
-                '{self.values.max:%Y-%m-%d %H:%M:%S}'.format(
-                    self=self, value=value))
+                f'{value:%Y-%m-%d %H:%M:%S} is not between '
+                f'{self.values.min:%Y-%m-%d %H:%M:%S} and '
+                f'{self.values.max:%Y-%m-%d %H:%M:%S}')
 
 
 class Str(Scalar):
@@ -1002,8 +998,7 @@ class Str(Scalar):
             return 'str'
         else:
             pattern = ''.join(str(c) for c in self.pattern)
-            return 'str pattern={pattern}'.format(
-                pattern=shorten(pattern, width=60, placeholder='...'))
+            return f'str pattern={shorten(pattern, width=60, placeholder="...")}'
 
     def __xml__(self):
         return tag.str(
@@ -1046,20 +1041,18 @@ class Str(Scalar):
                             or deviates from the given :attr:`pattern`
         """
         if not isinstance(value, str):
-            raise TypeError('{value!r} is not a str'.format(value=value))
+            raise TypeError(f'{value!r} is not a str')
         if not self.values.min <= value <= self.values.max:
             raise ValueError(
-                '{value!r} is not between {self.values.min!r} and '
-                '{self.values.max!r}'.format(self=self, value=value))
+                f'{value!r} is not between {self.values.min!r} and '
+                f'{self.values.max!r}')
         if self.pattern is not None:
             for c1, c2 in zip(value, self.pattern):
                 if c1 not in c2:
                     pattern = ''.join(str(c) for c in self.pattern)
                     raise ValueError(
-                        '{value!r} does not match {pattern}'.format(
-                            value=value,
-                            pattern=shorten(pattern, width=60,
-                                            placeholder='...')))
+                        f'{value!r} does not match '
+                        f'{shorten(pattern, width=60, placeholder="...")}')
 
 
 class Repr(Type):
@@ -1128,7 +1121,7 @@ class StrRepr(Repr):
     int_bases = {'o': 8, 'd': 10, 'x': 16}
 
     def __str__(self):
-        return 'str of {self.content} pattern={self.pattern}'.format(self=self)
+        return f'str of {self.content} pattern={self.pattern}'
 
     def __xml__(self):
         return tag.strof(
@@ -1179,7 +1172,7 @@ class StrRepr(Repr):
 
     def validate(self, value):
         if not isinstance(value, str):
-            raise TypeError('{value!r} is not a str'.format(value=value))
+            raise TypeError(f'{value!r} is not a str')
         if isinstance(self.content, Bool):
             false, true = self.pattern.split('|', 1)
             value = parse_bool(value, false, true)
@@ -1197,8 +1190,7 @@ class StrRepr(Repr):
         elif isinstance(self.content, DateTime):
             value = dt.datetime.strptime(value, self.pattern)
         else:
-            assert False, (
-                'validating str-repr of {self.content!r}'.format(self=self))
+            assert False, f'validating str-repr of {self.content!r}'
         self.content.validate(value)
 
 
@@ -1214,10 +1206,10 @@ class NumRepr(Repr):
         try:
             type_name = {Int: 'int', Float: 'float'}[type_]
         except KeyError:
-            assert False, 'str(num-repr) of {self.content!r}'.format(self=self)
-        return '{type_name} {numrepr} of {self.content}'.format(
-            self=self, type_name=type_name,
-            numrepr=format_timestamp_numrepr(offset, scale))
+            assert False, f'str(num-repr) of {self.content!r}'
+        return (
+            f'{type_name} {format_timestamp_numrepr(offset, scale)} of '
+            f'{self.content}')
 
     def __xml__(self):
         type_, scale, offset = self.pattern
@@ -1226,7 +1218,7 @@ class NumRepr(Repr):
         elif type_ is Float:
             return tag.floatof(xml(self.content), scale=scale, offset=offset)
         else:
-            assert False, 'xml(num-repr) of {self.content!r}'.format(self=self)
+            assert False, f'xml(num-repr) of {self.content!r}'
 
     def __add__(self, other):
         if self == other:
@@ -1252,14 +1244,13 @@ class NumRepr(Repr):
 
     def validate(self, value):
         if not isinstance(value, Real):
-            raise TypeError('{value!r} is not a number'.format(value=value))
+            raise TypeError(f'{value!r} is not a number')
         if isinstance(self.content, DateTime):
             type_, scale, offset = self.pattern
             value = dt.datetime.fromtimestamp(
                 (value * scale) + offset, tz=dt.timezone.utc)
         else:
-            assert False, (
-                'validating num-repr of {self.content!r}'.format(self=self))
+            assert False, f'validating num-repr of {self.content!r}'
         self.content.validate(value)
 
 
@@ -1289,7 +1280,7 @@ class URL(Str):
         super().validate(value)
         # TODO use urlparse (or split?) and check lots more schemes
         if not value.startswith(('http://', 'https://')):
-            raise ValueError('{value!r} is not a URL'.format(value=value))
+            raise ValueError(f'{value!r} is not a URL')
 
 
 class Fields(Type):
@@ -1313,7 +1304,7 @@ class Fields(Type):
         choices = shorten(
             '|'.join(str(choice) for choice in self),
             width=60, placeholder='...')
-        return '<{choices}>'.format(choices=choices)
+        return f'<{choices}>'
 
     def validate(self, value):
         for choice in self:
@@ -1440,9 +1431,7 @@ class Field(Type):
         :raises ValueError: if *value* does not match the expected value
         """
         if not value == self.value:
-            raise ValueError(
-                '{value!r} does not equal {self.value!r}'.format(
-                    self=self, value=value))
+            raise ValueError(f'{value!r} does not equal {self.value!r}')
 
     @property
     def size(self):
@@ -1507,7 +1496,7 @@ class Redo(Value):
     __slots__ = ()
 
     def __repr__(self):
-        return 'Redo({})'.format(self.sample)
+        return f'Redo({self.sample})'
 
     def __str__(self):
         assert False, 'str of Redo'

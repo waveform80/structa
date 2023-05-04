@@ -75,8 +75,7 @@ class CharClass(frozenset):
             return super().__new__(cls, chars)
 
     def __repr__(self):
-        return '{self.__class__.__name__}({chars!r})'.format(
-            self=self, chars=''.join(sorted(self)))
+        return f'{self.__class__.__name__}({"".join(sorted(self))!r})'
 
     def __str__(self):
         if len(self) == 0:
@@ -93,7 +92,7 @@ class CharClass(frozenset):
                     ident_char:  'i',
                 }[self]
             except KeyError:
-                return '[{ranges}]'.format(ranges=format_chars(self))
+                return f'[{format_chars(self)}]'
 
     def __xml__(self):
         if len(self) == 0:
@@ -110,7 +109,7 @@ class CharClass(frozenset):
                     ident_char:  'i',
                 }[self])
             except KeyError:
-                return tag.pat('[{ranges}]'.format(ranges=format_chars(self)))
+                return tag.pat(f'[{format_chars(self)}]')
 
     def __and__(self, other):
         result = super().__and__(other)
