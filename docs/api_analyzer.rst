@@ -47,7 +47,7 @@ the source format and encoding:
     from urllib.request import urlopen
 
     with urlopen('https://usn.ubuntu.com/usn-db/database-all.json') as f:
-        src = Source(data)
+        src = Source(f)
         an = Analyzer()
         an.measure(src.data)
         structure = an.analyze(src.data)
